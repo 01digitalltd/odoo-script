@@ -1,14 +1,26 @@
 #!/bin/bash
 
-# 在腳本開始處添加日期時間變量
+# 檢查是否以 root 權限運行
+if [ "$EUID" -ne 0 ]; then 
+    echo "請使用 sudo 運行此腳本"
+    exit 1
+fi
+
+# 設置日期時間變量
 INSTALL_DATE=$(date '+%Y-%m-%d_%H-%M-%S')
 LOG_FILE="installation_credentials_${INSTALL_DATE}.log"
 
-# 在主域名後添加日誌文件創建
-echo "=== 安裝信息日誌 ===" > $LOG_FILE
-echo "安裝日期：${INSTALL_DATE}" >> $LOG_FILE
-echo "域名：${MAIN_DOMAIN}" >> $LOG_FILE
-echo "----------------------------------------" >> $LOG_FILE
+# 創建並設置日誌文件權限
+sudo touch $LOG_FILE
+sudo chmod 600 $LOG_FILE  # 只有 root 可以讀寫
+
+# 創建日誌
+sudo bash -c "cat > $LOG_FILE" << EOF
+=== 安裝信息日誌 ===
+安裝日期：${INSTALL_DATE}
+域名：${MAIN_DOMAIN}
+----------------------------------------
+EOF
 
 # 檢查是否提供域名參數
 if [ -z "$1" ]; then
@@ -35,35 +47,39 @@ echo "Odoo 域名: ${ODOO_DOMAIN}"
 echo "WordPress 域名: ${WP_DOMAIN}"
 
 # 使腳本可執行
-chmod +x install_odoo_ubuntu.sh
-chmod +x install_wordpress.sh
+sudo chmod +x install_odoo_ubuntu.sh
+sudo chmod +x install_wordpress.sh
 
 # 修改 Odoo 安裝腳本中的域名和郵箱
-sed -i "s/WEBSITE_NAME=\".*\"/WEBSITE_NAME=\"${ODOO_DOMAIN}\"/" install_odoo_ubuntu.sh
-sed -i "s/ADMIN_EMAIL=\".*\"/ADMIN_EMAIL=\"${ADMIN_EMAIL}\"/" install_odoo_ubuntu.sh
+sudo sed -i "s/WEBSITE_NAME=\".*\"/WEBSITE_NAME=\"${ODOO_DOMAIN}\"/" install_odoo_ubuntu.sh
+sudo sed -i "s/ADMIN_EMAIL=\".*\"/ADMIN_EMAIL=\"${ADMIN_EMAIL}\"/" install_odoo_ubuntu.sh
 
-# 首先安裝 Odoo
+# 安裝 Odoo
 echo "=== 開始安裝 Odoo ==="
-./install_odoo_ubuntu.sh
+sudo bash install_odoo_ubuntu.sh
 
-# 在執行 Odoo 安裝後添加
-echo "=== Odoo 登錄信息 ===" >> $LOG_FILE
-echo "網址：https://${ODOO_DOMAIN}" >> $LOG_FILE
-grep "Password superadmin" /var/log/odoo_install.log >> $LOG_FILE
-echo "數據庫用戶：odoo" >> $LOG_FILE
-echo "----------------------------------------" >> $LOG_FILE
+# 記錄 Odoo 信息
+sudo bash -c "cat >> $LOG_FILE" << EOF
+=== Odoo 登錄信息 ===
+網址：https://${ODOO_DOMAIN}
+$(sudo grep "Password superadmin" /var/log/odoo_install.log)
+數據庫用戶：odoo
+----------------------------------------
+EOF
 
-# 然後安裝 WordPress
+# 安裝 WordPress
 echo "=== 開始安裝 WordPress ==="
-./install_wordpress.sh ${WP_DOMAIN}
+sudo bash install_wordpress.sh ${WP_DOMAIN}
 
-# 在執行 WordPress 安裝後添加
-echo "=== WordPress 登錄信息 ===" >> $LOG_FILE
-echo "網址：https://${WP_DOMAIN}" >> $LOG_FILE
-echo "數據庫名：${DB_NAME}" >> $LOG_FILE
-echo "數據庫用戶：${DB_USER}" >> $LOG_FILE
-echo "數據庫密碼：${DB_PASS}" >> $LOG_FILE
-echo "----------------------------------------" >> $LOG_FILE
+# 記錄 WordPress 信息
+sudo bash -c "cat >> $LOG_FILE" << EOF
+=== WordPress 登錄信息 ===
+網址：https://${WP_DOMAIN}
+數據庫名：${DB_NAME}
+數據庫用戶：${DB_USER}
+數據庫密碼：${DB_PASS}
+----------------------------------------
+EOF
 
 echo "============================================"
 echo "安裝完成！"
@@ -72,5 +88,6 @@ echo "WordPress 訪問地址: https://${WP_DOMAIN}"
 echo "請查看各自的安裝日誌以獲取詳細信息"
 echo "============================================"
 
-# 在腳本結束時
-echo "所有登錄信息已保存到：${LOG_FILE}" 
+# 設置日誌文件的最終權限
+sudo chown root:root $LOG_FILE
+sudo chmod 600 $LOG_FILE 
