@@ -13,6 +13,13 @@ DB_NAME=$(echo ${DOMAIN} | sed 's/[.-]//g')
 DB_USER="${DB_NAME}_user"
 DB_PASS=$(openssl rand -base64 12)
 
+# 創建環境變量文件
+sudo bash -c "cat > /tmp/wp_env.sh" << EOF
+export WP_DB_NAME="${DB_NAME}"
+export WP_DB_USER="${DB_USER}"
+export WP_DB_PASS="${DB_PASS}"
+EOF
+
 # 安裝必要的套件
 echo "=== 安裝必要的套件 ==="
 sudo apt update
@@ -37,9 +44,25 @@ sudo rm -rf wordpress latest.tar.gz
 # 設置 WordPress 配置文件
 echo "=== 配置 WordPress ==="
 sudo cp ${WP_ROOT}/wp-config-sample.php ${WP_ROOT}/wp-config.php
+
+# 替換數據庫配置
 sudo sed -i "s/database_name_here/${DB_NAME}/" ${WP_ROOT}/wp-config.php
 sudo sed -i "s/username_here/${DB_USER}/" ${WP_ROOT}/wp-config.php
 sudo sed -i "s/password_here/${DB_PASS}/" ${WP_ROOT}/wp-config.php
+
+# 添加安全密鑰
+KEYS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
+sudo sed -i "/put your unique phrase here/d" ${WP_ROOT}/wp-config.php
+echo "${KEYS}" | sudo tee -a ${WP_ROOT}/wp-config.php > /dev/null
+
+# 檢查配置文件替換是否成功
+echo "=== 驗證 WordPress 配置 ==="
+if grep -q "database_name_here\|username_here\|password_here" ${WP_ROOT}/wp-config.php; then
+    echo "錯誤：WordPress 配置文件未正確更新"
+    exit 1
+else
+    echo "WordPress 配置文件更新成功"
+fi
 
 # 設置權限
 sudo chown -R www-data:www-data ${WP_ROOT}
@@ -51,6 +74,15 @@ sudo cat > /etc/nginx/sites-available/${DOMAIN} <<EOF
 server {
     listen 80;
     server_name ${DOMAIN} www.${DOMAIN};
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN} www.${DOMAIN};
+    
+    # SSL 配置將由 certbot 自動添加
+    
     root ${WP_ROOT};
     index index.php index.html index.htm;
 
@@ -89,9 +121,23 @@ EOF
 sudo ln -s /etc/nginx/sites-available/${DOMAIN} /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# 安裝 SSL 證書
+# 修改 SSL 安裝部分
 echo "=== 安裝 SSL 證書 ==="
-sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}
+if [ "$2" != "no-ssl" ]; then
+    # 確保 certbot 已安裝
+    sudo apt-get remove certbot
+    sudo snap install core
+    sudo snap refresh core
+    sudo snap install --classic certbot
+    sudo ln -s /snap/bin/certbot /usr/bin/certbot
+    
+    # 配置 SSL
+    sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}
+    sudo systemctl reload nginx
+    echo "SSL 證書安裝完成！"
+else
+    echo "跳過 SSL 配置，等待 DNS 生效後再配置"
+fi
 
 # 輸出配置信息
 echo "============================================"

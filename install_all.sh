@@ -36,15 +36,95 @@ if [ ! -f "install_odoo_ubuntu.sh" ] || [ ! -f "install_wordpress.sh" ]; then
     exit 1
 fi
 
+# 添加域名檢查函數
+check_domain() {
+    local domain=$1
+    echo "檢查域名 $domain 的 DNS 設置..."
+    if ! host $domain > /dev/null 2>&1; then
+        echo "警告: 域名 $domain 似乎未正確設置 DNS 記錄"
+        echo "目前將使用 IP 訪問，等 DNS 生效後再設置 SSL"
+        return 1
+    fi
+    return 0
+}
+
+# 在域名檢查函數後添加
+wait_for_dns() {
+    local domain=$1
+    local max_attempts=5
+    local attempt=1
+    
+    echo "等待 DNS 解析生效..."
+    while [ $attempt -le $max_attempts ]; do
+        if check_domain $domain; then
+            echo "DNS 解析已生效"
+            return 0
+        fi
+        echo "等待 30 秒後重試... (${attempt}/${max_attempts})"
+        sleep 30
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+# 在設置域名後添加檢查
 MAIN_DOMAIN=$1
 ODOO_DOMAIN="erp.${MAIN_DOMAIN}"
 WP_DOMAIN="${MAIN_DOMAIN}"
+
+# 檢查域名 DNS 設置
+DNS_OK=true
+if ! check_domain $MAIN_DOMAIN || ! check_domain $ODOO_DOMAIN; then
+    echo "是否等待 DNS 解析生效？(y/n)"
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        if wait_for_dns $MAIN_DOMAIN && wait_for_dns $ODOO_DOMAIN; then
+            DNS_OK=true
+        else
+            echo "DNS 解析仍未生效，將跳過 SSL 配置"
+            DNS_OK=false
+        fi
+    else
+        DNS_OK=false
+    fi
+fi
+
 ADMIN_EMAIL="it@reformmktg.com"
 
 echo "=== 開始安裝過程 ==="
 echo "主域名: ${MAIN_DOMAIN}"
 echo "Odoo 域名: ${ODOO_DOMAIN}"
 echo "WordPress 域名: ${WP_DOMAIN}"
+
+# 在安裝前添加 Nginx 配置檢查
+check_nginx_configs() {
+    echo "檢查 Nginx 配置..."
+    
+    # 檢查是否已存在相同的配置文件
+    if [ -f "/etc/nginx/sites-enabled/${WP_DOMAIN}" ] || [ -f "/etc/nginx/sites-enabled/odoo" ]; then
+        echo "警告：已存在的 Nginx 配置可能會衝突"
+        echo "是否刪除現有配置？(y/n)"
+        read -r answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            sudo rm -f "/etc/nginx/sites-enabled/${WP_DOMAIN}"
+            sudo rm -f "/etc/nginx/sites-enabled/odoo"
+            sudo rm -f "/etc/nginx/sites-available/${WP_DOMAIN}"
+            sudo rm -f "/etc/nginx/sites-available/odoo"
+        else
+            echo "請先手動處理現有的 Nginx 配置"
+            exit 1
+        fi
+    fi
+    
+    # 檢查 Nginx 語法
+    sudo nginx -t || {
+        echo "Nginx 配置測試失敗"
+        exit 1
+    }
+}
+
+# 在開始安裝前調用檢查
+check_nginx_configs
 
 # 使腳本可執行
 sudo chmod +x install_odoo_ubuntu.sh
@@ -54,9 +134,35 @@ sudo chmod +x install_wordpress.sh
 sudo sed -i "s/WEBSITE_NAME=\".*\"/WEBSITE_NAME=\"${ODOO_DOMAIN}\"/" install_odoo_ubuntu.sh
 sudo sed -i "s/ADMIN_EMAIL=\".*\"/ADMIN_EMAIL=\"${ADMIN_EMAIL}\"/" install_odoo_ubuntu.sh
 
-# 安裝 Odoo
-echo "=== 開始安裝 Odoo ==="
-sudo bash install_odoo_ubuntu.sh
+# 傳遞 DNS 狀態給安裝腳本
+if [ "$DNS_OK" = true ]; then
+    echo "=== 配置 SSL ==="
+    # 確保 certbot 已安裝
+    sudo apt-get remove certbot
+    sudo snap install core
+    sudo snap refresh core
+    sudo snap install --classic certbot
+    sudo ln -s /snap/bin/certbot /usr/bin/certbot
+
+    # 設置 SSL 為啟用
+    sudo sed -i "s/ENABLE_SSL=\".*\"/ENABLE_SSL=\"True\"/" install_odoo_ubuntu.sh
+    
+    # WordPress 安裝時啟用 SSL
+    sudo bash install_wordpress.sh ${WP_DOMAIN} "ssl"
+    
+    # 安裝 Odoo
+    sudo bash install_odoo_ubuntu.sh
+else
+    echo "DNS 未生效，暫時跳過 SSL 配置"
+    sudo sed -i "s/ENABLE_SSL=\".*\"/ENABLE_SSL=\"False\"/" install_odoo_ubuntu.sh
+    sudo bash install_wordpress.sh ${WP_DOMAIN} "no-ssl"
+    sudo bash install_odoo_ubuntu.sh
+    
+    # 提供後續配置 SSL 的說明
+    echo "請在 DNS 生效後運行以下命令配置 SSL："
+    echo "sudo certbot --nginx -d ${WP_DOMAIN} -d www.${WP_DOMAIN}"
+    echo "sudo certbot --nginx -d ${ODOO_DOMAIN}"
+fi
 
 # 記錄 Odoo 信息
 sudo bash -c "cat >> $LOG_FILE" << EOF
@@ -71,21 +177,33 @@ EOF
 echo "=== 開始安裝 WordPress ==="
 sudo bash install_wordpress.sh ${WP_DOMAIN}
 
+# 獲取 WordPress 憑據
+source /tmp/wp_env.sh
+
 # 記錄 WordPress 信息
 sudo bash -c "cat >> $LOG_FILE" << EOF
 === WordPress 登錄信息 ===
 網址：https://${WP_DOMAIN}
-數據庫名：${DB_NAME}
-數據庫用戶：${DB_USER}
-數據庫密碼：${DB_PASS}
+數據庫名：${WP_DB_NAME}
+數據庫用戶：${WP_DB_USER}
+數據庫密碼：${WP_DB_PASS}
 ----------------------------------------
 EOF
 
+# 清理環境變量文件
+sudo rm /tmp/wp_env.sh
+
 echo "============================================"
 echo "安裝完成！"
-echo "Odoo 訪問地址: https://${ODOO_DOMAIN}"
-echo "WordPress 訪問地址: https://${WP_DOMAIN}"
-echo "請查看各自的安裝日誌以獲取詳細信息"
+if [ "$DNS_OK" = true ]; then
+    echo "Odoo 訪問地址: https://${ODOO_DOMAIN}"
+    echo "WordPress 訪問地址: https://${WP_DOMAIN}"
+else
+    echo "注意：DNS 解析未生效"
+    echo "請等待 DNS 生效後，運行以下命令配置 SSL："
+    echo "sudo certbot --nginx -d ${WP_DOMAIN} -d www.${WP_DOMAIN}"
+    echo "sudo certbot --nginx -d ${ODOO_DOMAIN}"
+fi
 echo "============================================"
 
 # 設置日誌文件的最終權限

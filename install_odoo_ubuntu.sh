@@ -268,58 +268,66 @@ upstream ${OE_USER}chat {
 }
 
 server {
-   listen 80;
-   server_name erp.*;
+    listen 80;
+    server_name ${WEBSITE_NAME};
+    return 301 https://$server_name$request_uri;
+}
 
-   # Specifies the maximum accepted body size of a client request,
-   # as indicated by the request header Content-Length.
-   client_max_body_size 500M;
+server {
+    listen 443 ssl;
+    server_name ${WEBSITE_NAME};
+    
+    # SSL 配置將由 certbot 自動添加
+    
+    # Specifies the maximum accepted body size of a client request,
+    # as indicated by the request header Content-Length.
+    client_max_body_size 500M;
 
-   # log
-   access_log /var/log/nginx/$OE_USER-access.log;
-   error_log /var/log/nginx/$OE_USER-error.log;
+    # log
+    access_log /var/log/nginx/$OE_USER-access.log;
+    error_log /var/log/nginx/$OE_USER-error.log;
 
-   # add ssl specific settings
-   keepalive_timeout 90;
+    # add ssl specific settings
+    keepalive_timeout 90;
 
-   # increase proxy buffer to handle some Odoo web requests
-   proxy_buffers 16 64k;
-   proxy_buffer_size 128k;
+    # increase proxy buffer to handle some Odoo web requests
+    proxy_buffers 16 64k;
+    proxy_buffer_size 128k;
 
-   proxy_read_timeout 720s;
-   proxy_connect_timeout 720s;
-   proxy_send_timeout 720s;
-  
-   # Add Headers for odoo proxy mode
-   proxy_set_header Host \$host;
-   proxy_set_header X-Forwarded-Host \$host;
-   proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-   proxy_set_header X-Forwarded-Proto \$scheme;
-   proxy_set_header X-Real-IP \$remote_addr;
+    proxy_read_timeout 720s;
+    proxy_connect_timeout 720s;
+    proxy_send_timeout 720s;
+   
+    # Add Headers for odoo proxy mode
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Real-IP \$remote_addr;
 
-   # Redirect requests to odoo backend server
-   location / {
-     proxy_redirect off;
-     proxy_pass http://$OE_USER;
-   }
+    # Redirect requests to odoo backend server
+    location / {
+      proxy_redirect off;
+      proxy_pass http://$OE_USER;
+    }
 
-   # Redirect longpoll requests to odoo longpolling port
-   location /longpolling {
-       proxy_pass http://${OE_USER}chat;
-   }
+    # Redirect longpoll requests to odoo longpolling port
+    location /longpolling {
+        proxy_pass http://${OE_USER}chat;
+    }
 
-   # cache some static data in memory for 90mins
-   # under heavy load this should relieve stress on the Odoo web interface a bit.
-   location ~* /web/static/ {
-       proxy_cache_valid 200 90m;
-       proxy_buffering on;
-       expires 864000;
-       proxy_pass http://$OE_USER;
-  }
+    # cache some static data in memory for 90mins
+    # under heavy load this should relieve stress on the Odoo web interface a bit.
+    location ~* /web/static/ {
+        proxy_cache_valid 200 90m;
+        proxy_buffering on;
+        expires 864000;
+        proxy_pass http://$OE_USER;
+    }
 
-  # common gzip
-  gzip_types text/css text/less text/plain text/xml application/xml application/json application/javascript;
-  gzip on;
+    # common gzip
+    gzip_types text/css text/less text/plain text/xml application/xml application/json application/javascript;
+    gzip on;
 }
  
 EOF
