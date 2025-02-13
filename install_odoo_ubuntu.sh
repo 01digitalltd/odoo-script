@@ -195,6 +195,7 @@ sudo touch /etc/${OE_CONFIG}.conf
 if [ $GENERATE_RANDOM_PASSWORD = "True" ]; then
     echo -e "\n========= Generating random admin password ==========="
     OE_SUPERADMIN=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 20 | head -n 1)
+    echo "Odoo admin password: ${OE_SUPERADMIN}" >> /var/log/odoo_install.log
 fi
 
 sudo cat <<EOF > /etc/${OE_CONFIG}.conf
@@ -352,23 +353,6 @@ else
   echo "==== SSL/HTTPS isn't enabled due to choice of the user or because of a misconfiguration! ======"
 fi
 
-#--------------------------------------------------
-# UFW Firewall
-#--------------------------------------------------
-echo "=== Installation of UFW firewall ... ==="
-sudo apt install -y ufw 
-
-sudo ufw allow 'Nginx Full'
-sudo ufw allow 'Nginx HTTP'
-sudo ufw allow 'Nginx HTTPS'
-sudo ufw allow 22/tcp
-sudo ufw allow 6010/tcp
-#sudo ufw allow 5432//tcp
-sudo ufw allow 8069/tcp
-sudo ufw allow 8072/tcp
-sudo ufw enable -y
-
-clear
 
 # Final message
 # Check Odoo service status
