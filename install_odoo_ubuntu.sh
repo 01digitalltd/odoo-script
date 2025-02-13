@@ -40,7 +40,7 @@ OE_SUPERADMIN="admin"
 GENERATE_RANDOM_PASSWORD="True"
 OE_CONFIG="${OE_USER}-server"
 # Set the website name
-WEBSITE_NAME="example.com"
+WEBSITE_NAME="erp.example.com"
 # Set the default Odoo longpolling port (you still have to use -c /etc/odoo-server.conf for example to use this.)
 LONGPOLLING_PORT="8072"
 # Set to "True" to install certbot and have ssl enabled, "False" to use http
@@ -258,17 +258,17 @@ echo "==== Configuring nginx ... ===="
 cat <<EOF > /etc/nginx/sites-available/$OE_USER
 
 # odoo server
- upstream $OE_USER {
- server 127.0.0.1:$OE_PORT;
+upstream $OE_USER {
+  server 127.0.0.1:$OE_PORT;
 }
 
- upstream ${OE_USER}chat {
- server 127.0.0.1:$LONGPOLLING_PORT;
+upstream ${OE_USER}chat {
+  server 127.0.0.1:$LONGPOLLING_PORT;
 }
 
 server {
    listen 80;
-   server_name $WEBSITE_NAME;
+   server_name erp.*;
 
    # Specifies the maximum accepted body size of a client request,
    # as indicated by the request header Content-Length.
