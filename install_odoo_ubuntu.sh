@@ -46,7 +46,7 @@ LONGPOLLING_PORT="8072"
 # Set to "True" to install certbot and have ssl enabled, "False" to use http
 ENABLE_SSL="True"
 # Provide Email to register ssl certificate
-ADMIN_EMAIL="odoo@example.com"
+ADMIN_EMAIL="it@reformmktg.com"
 
 #--------------------------------------------------
 # Update and upgrade the system
@@ -70,7 +70,7 @@ sudo systemctl restart sshd
 # Setting up the timezones
 #--------------------------------------------------
 # set the correct timezone on ubuntu
-timedatectl set-timezone Africa/Kigali
+timedatectl set-timezone Asia/Hong_Kong
 timedatectl
 
 #--------------------------------------------------
