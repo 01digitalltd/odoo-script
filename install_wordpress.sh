@@ -71,18 +71,17 @@ sudo chmod -R 755 ${WP_ROOT}
 # 創建 Nginx 配置文件
 echo "=== 配置 Nginx ==="
 sudo cat > /etc/nginx/sites-available/${DOMAIN} <<EOF
+# 主域名重定向到 www
 server {
     listen 80;
-    server_name ${DOMAIN} www.${DOMAIN};
-    return 301 https://$server_name$request_uri;
+    server_name ${DOMAIN};
+    return 301 \$scheme://www.${DOMAIN}\$request_uri;
 }
 
+# www 子域名配置
 server {
-    listen 443 ssl;
-    server_name ${DOMAIN} www.${DOMAIN};
-    
-    # SSL 配置將由 certbot 自動添加
-    
+    listen 80;
+    server_name www.${DOMAIN};
     root ${WP_ROOT};
     index index.php index.html index.htm;
 
