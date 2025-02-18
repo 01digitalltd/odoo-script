@@ -259,14 +259,13 @@ echo "==== Configuring nginx ... ===="
 cat <<EOF > /etc/nginx/sites-available/$OE_USER
 # odoo server
 upstream $OE_USER {
-  server 127.0.0.1:$OE_PORT;
+    server 127.0.0.1:$OE_PORT;
 }
 
 upstream ${OE_USER}chat {
-  server 127.0.0.1:$LONGPOLLING_PORT;
+    server 127.0.0.1:$LONGPOLLING_PORT;
 }
 
-# erp 子域名配置
 server {
     listen 80;
     server_name ${WEBSITE_NAME};  # erp.domain.com
@@ -288,11 +287,11 @@ server {
     proxy_send_timeout 720s;
 
     # Proxy headers
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Real-IP \$remote_addr;
 
     # Redirect requests to odoo backend server
     location / {
@@ -319,14 +318,23 @@ server {
 }
 EOF
 
-  sudo mv ~/odoo /etc/nginx/sites-available/
-  sudo ln -s /etc/nginx/sites-available/$OE_USER /etc/nginx/sites-enabled/$OE_USER
-  sudo rm /etc/nginx/sites-enabled/default
-  sudo rm /etc/nginx/sites-available/default
-  
-  sudo systemctl reload nginx
-  sudo su root -c "printf 'proxy_mode = True\n' >> /etc/${OE_CONFIG}.conf"
-  echo "Done! The Nginx server is up and running. Configuration can be found at /etc/nginx/sites-available/$OE_USER"
+# 然後正確設置軟連接
+sudo mv /etc/nginx/sites-available/$OE_USER /etc/nginx/sites-available/odoo
+sudo ln -s /etc/nginx/sites-available/odoo /etc/nginx/sites-enabled/odoo
+
+# 移除默認配置
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo rm -f /etc/nginx/sites-available/default
+
+# 設置正確的權限
+sudo chown root:root /etc/nginx/sites-available/odoo
+sudo chmod 644 /etc/nginx/sites-available/odoo
+
+# 測試並重載 Nginx
+sudo nginx -t && sudo systemctl reload nginx
+
+sudo su root -c "printf 'proxy_mode = True\n' >> /etc/${OE_CONFIG}.conf"
+echo "Done! The Nginx server is up and running. Configuration can be found at /etc/nginx/sites-available/$OE_USER"
 else
   echo "===== Nginx isn't installed due to choice of the user! ========"
 fi
