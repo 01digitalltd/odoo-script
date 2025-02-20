@@ -130,9 +130,61 @@ else
     echo "WordPress 配置文件更新成功"
 fi
 
-# 設置權限
+# 修改權限設置部分
+echo "=== Setting up WordPress permissions ==="
+
+# 設置目錄權限為 755
+sudo find ${WP_ROOT} -type d -exec chmod 755 {} \;
+
+# 設置文件權限為 644
+sudo find ${WP_ROOT} -type f -exec chmod 644 {} \;
+
+# 特殊目錄權限
+sudo chmod 755 ${WP_ROOT}/wp-content
+sudo chmod 755 ${WP_ROOT}/wp-content/themes
+sudo chmod 755 ${WP_ROOT}/wp-content/plugins
+
+# 可寫入目錄
+sudo chmod 775 ${WP_ROOT}/wp-content/uploads
+sudo chmod 775 ${WP_ROOT}/wp-content/upgrade
+
+# wp-config.php 需要特殊權限
+sudo chmod 600 ${WP_ROOT}/wp-config.php
+
+# 設置正確的擁有者
 sudo chown -R www-data:www-data ${WP_ROOT}
-sudo chmod -R 755 ${WP_ROOT}
+
+# 確保 uploads 目錄存在並設置正確權限
+sudo mkdir -p ${WP_ROOT}/wp-content/uploads
+sudo chown -R www-data:www-data ${WP_ROOT}/wp-content/uploads
+sudo chmod 775 ${WP_ROOT}/wp-content/uploads
+
+# 添加 .htaccess 文件保護
+sudo bash -c "cat > ${WP_ROOT}/.htaccess" << EOF
+# Protect wp-config.php
+<files wp-config.php>
+order allow,deny
+deny from all
+</files>
+
+# Protect .htaccess
+<files .htaccess>
+order allow,deny
+deny from all
+</files>
+
+# Disable directory browsing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "^.*(error_log|wp-config\.php|php.ini|\.[hH][tT][aApP].*)$">
+Order deny,allow
+Deny from all
+</FilesMatch>
+EOF
+
+sudo chown www-data:www-data ${WP_ROOT}/.htaccess
+sudo chmod 644 ${WP_ROOT}/.htaccess
 
 # Install and configure Nginx if not installed
 echo "=== Installing and configuring Nginx ==="
