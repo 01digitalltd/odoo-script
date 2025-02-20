@@ -211,7 +211,17 @@ sudo mkdir -p /etc/nginx/sites-enabled
 # Create Nginx configuration file
 echo "=== Creating Nginx configuration ==="
 sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
-# HTTP server - redirect to HTTPS
+# Redirect www to non-www (HTTP only)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name www.${MAIN_DOMAIN};
+
+    # Redirect all www traffic to non-www HTTPS
+    return 301 https://${MAIN_DOMAIN}\$request_uri;
+}
+
+# Main HTTP server
 server {
     listen 80;
     listen [::]:80;
@@ -228,7 +238,7 @@ server {
     }
 }
 
-# HTTPS server
+# Main HTTPS server
 server {
     listen 443 ssl;
     listen [::]:443 ssl;

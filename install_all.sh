@@ -153,7 +153,7 @@ sudo bash install_wordpress.sh ${WP_DOMAIN}
 echo "=== 開始安裝 Odoo ==="
 sudo bash install_odoo_ubuntu.sh
 
-# SSL setup function - must be defined before it's called
+# SSL setup function
 setup_ssl() {
     echo "=== Installing and Configuring SSL ==="
     # Install certbot if not present
@@ -171,19 +171,24 @@ setup_ssl() {
         # Make sure Nginx is running with HTTP only
         sudo systemctl start nginx || true
         
-        # Get certificates first
+        # Get certificates for main domain and erp subdomain
         sudo certbot certonly --nginx \
             -d ${MAIN_DOMAIN} \
-            -d www.${MAIN_DOMAIN} \
             -d erp.${MAIN_DOMAIN} \
             --non-interactive \
             --agree-tos \
             --email ${ADMIN_EMAIL}
 
         # Then configure Nginx to use them
+        # Configure main domain
         sudo certbot --nginx \
             -d ${MAIN_DOMAIN} \
-            -d www.${MAIN_DOMAIN} \
+            --non-interactive \
+            --agree-tos \
+            --redirect
+
+        # Configure erp subdomain
+        sudo certbot --nginx \
             -d erp.${MAIN_DOMAIN} \
             --non-interactive \
             --agree-tos \
@@ -194,11 +199,11 @@ setup_ssl() {
     else
         echo "DNS not propagated, skipping SSL setup"
         echo "Run the following when DNS is ready:"
-        echo "sudo certbot --nginx -d ${MAIN_DOMAIN} -d www.${MAIN_DOMAIN} -d erp.${MAIN_DOMAIN}"
+        echo "sudo certbot --nginx -d ${MAIN_DOMAIN} -d erp.${MAIN_DOMAIN}"
     fi
 }
 
-# Configure SSL - now the function is defined before it's called
+# Configure SSL
 setup_ssl
 
 # 記錄 Odoo 信息
