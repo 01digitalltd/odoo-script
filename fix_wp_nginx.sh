@@ -114,8 +114,39 @@ server {
     # WordPress specific locations
     location /wp-admin {
         try_files \$uri \$uri/ /index.php?\$args;
-        # Increase timeout for admin area
+        # Add security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        
+        # Increase timeouts
         fastcgi_read_timeout 600;
+        fastcgi_send_timeout 600;
+        
+        # Add CORS headers
+        add_header Access-Control-Allow-Origin "https://www.${DOMAIN}";
+    }
+
+    # Handle PHP in wp-admin separately
+    location ~ ^/wp-admin/.*\.php$ {
+        try_files \$uri =404;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param PATH_INFO \$fastcgi_path_info;
+        
+        # Admin specific settings
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        fastcgi_param HTTP_X_FORWARDED_HOST \$http_host;
+        
+        # Increase buffers for admin
+        fastcgi_buffer_size 256k;
+        fastcgi_buffers 8 256k;
+        fastcgi_busy_buffers_size 256k;
+        fastcgi_read_timeout 600;
+        fastcgi_send_timeout 600;
     }
 
     # Uploads location
