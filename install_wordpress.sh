@@ -296,25 +296,12 @@ server {
 
     # PHP handling
     location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         include fastcgi_params;
-        
-        # FastCGI settings
+        include snippets/fastcgi-php.conf;
         fastcgi_buffers 1024 4k;
         fastcgi_buffer_size 128k;
-        fastcgi_connect_timeout 300;
-        fastcgi_send_timeout 300;
-        fastcgi_read_timeout 300;
-
-        # WordPress specific FastCGI settings
-        fastcgi_param HTTPS on;
-        fastcgi_param HTTP_X_FORWARDED_PROTO https;
-        
-        # Cookie and session handling
-        fastcgi_intercept_errors on;
-        fastcgi_hide_header X-Powered-By;
     }
 
     # Enable gzip compression
