@@ -59,20 +59,59 @@ server {
     # Basic configuration
     client_max_body_size 500M;
 
+    # WordPress permalinks and uploads
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
     }
 
+    # wp-admin area
+    location ~* ^/wp-admin/ {
+        try_files \$uri \$uri/ /index.php?\$args;
+        # Increase timeouts for admin area
+        fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+        
+        # Additional security headers for admin
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+    }
+
+    # wp-login handling
+    location ~* ^/wp-login.php {
+        try_files \$uri \$uri/ /index.php?\$args;
+        # Limit access if needed
+        #limit_req zone=one burst=1 nodelay;
+        
+        # Increase timeouts for login
+        fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # PHP handling
     location ~ \.php$ {
         try_files \$uri =404;
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_index index.php;
         include fastcgi_params;
+        
+        # Important for WordPress
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         fastcgi_param PATH_INFO \$fastcgi_path_info;
+        
+        # SSL parameters
         fastcgi_param HTTPS on;
         fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        
+        # Buffers and timeouts
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+        fastcgi_read_timeout 300;
     }
 
     # Cache static files
@@ -82,8 +121,28 @@ server {
         add_header Cache-Control "public, no-transform";
     }
 
-    # Deny access to hidden files
+    # Deny access to sensitive files
+    location ~* \.(htaccess|htpasswd|ini|log|sh|inc|bak|git|svn)$ {
+        deny all;
+    }
+
+    # Deny access to hidden files and directories
     location ~ /\. {
+        deny all;
+    }
+
+    # Deny access to wp-content uploads php files
+    location ~* ^/wp-content/uploads/.*\.(?:php[1-7]?|pht|phtml?|phps)\$ {
+        deny all;
+    }
+
+    # Yoast SEO sitemap
+    location ~* sitemap\.(?:xml|xsl)\$ {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    # Deny access to any files with a .php extension in the uploads directory
+    location ~* /(?:uploads|files)/.*\.php\$ {
         deny all;
     }
 }
