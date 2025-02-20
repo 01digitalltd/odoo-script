@@ -16,36 +16,37 @@ fi
 DOMAIN=$1
 WP_ROOT="/var/www/${DOMAIN}"
 NGINX_CONF="/etc/nginx/sites-available/wordpress"
+PHP_VERSION="8.3"
+PHP_FPM_CONF="/etc/php/${PHP_VERSION}/fpm/pool.d/www.conf"
 
-echo "=== Fixing WordPress Nginx Configuration ==="
+echo "=== Fixing WordPress Configuration ==="
 
-# Create Nginx configuration
-echo "Creating new Nginx configuration..."
+# 1. Fix PHP-FPM configuration
+echo "Configuring PHP-FPM..."
+sudo cp "$PHP_FPM_CONF" "${PHP_FPM_CONF}.backup"
+
+# Update PHP-FPM configuration
+sudo sed -i 's/^user = .*/user = www-data/' "$PHP_FPM_CONF"
+sudo sed -i 's/^group = .*/group = www-data/' "$PHP_FPM_CONF"
+sudo sed -i 's/^listen = .*/listen = \/run\/php\/php-fpm.sock/' "$PHP_FPM_CONF"
+sudo sed -i 's/^;listen.owner = .*/listen.owner = www-data/' "$PHP_FPM_CONF"
+sudo sed -i 's/^;listen.group = .*/listen.group = www-data/' "$PHP_FPM_CONF"
+sudo sed -i 's/^;listen.mode = .*/listen.mode = 0660/' "$PHP_FPM_CONF"
+
+# 2. Create Nginx configuration
+echo "Creating Nginx configuration..."
 cat > "$NGINX_CONF" << EOF
 # Main HTTPS server
 server {
-    # Ports to listen on
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-
-    # Server name to listen for
     server_name ${DOMAIN} www.${DOMAIN};
-
-    # Path to document root
     root ${WP_ROOT};
-
-    # Paths to certificate files
-    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-
-    # File to be used as index
     index index.php;
 
-    # Overrides logs defined in nginx.conf
-    access_log /var/log/nginx/${DOMAIN}-access.log;
-    error_log /var/log/nginx/${DOMAIN}-error.log;
-
     # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:50m;
     ssl_session_tickets off;
@@ -53,30 +54,51 @@ server {
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
 
-    # Basic configuration
-    client_max_body_size 500M;
+    # Logs
+    access_log /var/log/nginx/${DOMAIN}-access.log;
+    error_log /var/log/nginx/${DOMAIN}-error.log;
 
-    # WordPress permalinks
+    # Global restrictions configuration
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+    }
+
+    # Deny all attempts to access hidden files
+    location ~ /\. {
+        deny all;
+    }
+
+    # WordPress single site rules
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
     }
 
-    # PHP handling with PHP-FPM
+    # Pass PHP scripts to PHP-FPM
     location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        try_files \$uri =404;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param PATH_INFO \$fastcgi_path_info;
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+        fastcgi_read_timeout 600;
     }
 
     # Cache static files
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
         expires max;
         log_not_found off;
-        add_header Cache-Control "public, no-transform";
-    }
-
-    # Deny access to hidden files
-    location ~ /\. {
-        deny all;
     }
 }
 
@@ -96,35 +118,38 @@ server {
 }
 EOF
 
-# Create required directories
-echo "Creating log directories..."
-sudo mkdir -p /var/log/nginx
-sudo chown -R www-data:www-data /var/log/nginx
+# 3. Fix permissions
+echo "Setting correct permissions..."
+sudo chown -R www-data:www-data "$WP_ROOT"
+sudo find "$WP_ROOT" -type d -exec chmod 755 {} \;
+sudo find "$WP_ROOT" -type f -exec chmod 644 {} \;
+sudo chmod 755 "$WP_ROOT"
 
-# Set correct permissions
-echo "Setting permissions..."
-sudo chown root:root "$NGINX_CONF"
-sudo chmod 644 "$NGINX_CONF"
+# 4. Restart services
+echo "Restarting services..."
+sudo systemctl restart php${PHP_VERSION}-fpm
+sudo systemctl restart nginx
 
-# Create symbolic link
-echo "Creating symbolic link..."
-sudo ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/
+# 5. Verify services
+echo "Verifying services..."
+echo "PHP-FPM status:"
+sudo systemctl status php${PHP_VERSION}-fpm | grep "Active:"
+echo "Nginx status:"
+sudo systemctl status nginx | grep "Active:"
 
-# Remove default config
-sudo rm -f /etc/nginx/sites-enabled/default
-
-# Test configuration
-echo "Testing Nginx configuration..."
-if sudo nginx -t; then
-    echo "Configuration test successful"
-    sudo systemctl restart nginx
-    echo "Nginx restarted"
-else
-    echo "Configuration test failed"
-    exit 1
-fi
+# 6. Create test PHP file
+echo "Creating PHP test file..."
+cat > "${WP_ROOT}/php-test.php" << EOF
+<?php
+phpinfo();
+EOF
+sudo chown www-data:www-data "${WP_ROOT}/php-test.php"
 
 echo "=== Fix complete ==="
-echo "Your WordPress site should now be accessible at:"
-echo "https://${DOMAIN}"
-echo "https://www.${DOMAIN}" 
+echo "Please test PHP at: https://${DOMAIN}/php-test.php"
+echo "If successful, delete the test file with:"
+echo "sudo rm ${WP_ROOT}/php-test.php"
+echo
+echo "Check these logs if you have issues:"
+echo "tail -f /var/log/nginx/error.log"
+echo "tail -f /var/log/php${PHP_VERSION}-fpm.log" 
