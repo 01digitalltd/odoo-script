@@ -13,7 +13,7 @@ WWW_DOMAIN="www.${DOMAIN}"
 WP_ROOT="/var/www/${DOMAIN}"
 DB_NAME=$(echo ${DOMAIN} | sed 's/[.-]//g')
 DB_USER="${DB_NAME}_user"
-DB_PASS=$(openssl rand -base64 12)
+DB_PASS="1234567890"
 NGINX_CONF="wordpress"  # 使用固定的配置文件名
 
 # 創建環境變量文件
@@ -69,7 +69,8 @@ EOF
 # 創建 WordPress 資料庫和用戶
 echo "=== 創建資料庫和用戶 ==="
 sudo mysql -e "CREATE DATABASE IF NOT EXISTS ${DB_NAME};"
-sudo mysql -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';"
+sudo mysql -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost';"
+sudo mysql -e "ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';"
 sudo mysql -e "GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';"
 sudo mysql -e "FLUSH PRIVILEGES;"
 
