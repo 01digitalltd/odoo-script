@@ -340,4 +340,8 @@ echo "數據庫用戶: ${DB_USER}"
 echo "數據庫密碼: ${DB_PASS}"
 echo "WordPress 目錄: ${WP_ROOT}"
 echo "請保存好以上信息！"
-echo "============================================" 
+echo "============================================"
+
+# 在 Nginx 配置之前添加
+echo "=== Configuring Nginx user ==="
+sudo sed -i 's/user www-data;/user www-data www-data;/' /etc/nginx/nginx.conf 

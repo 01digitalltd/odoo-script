@@ -156,6 +156,7 @@ sudo bash install_odoo_ubuntu.sh
 # SSL setup function
 setup_ssl() {
     echo "=== Installing and Configuring SSL ==="
+    
     # Install certbot if not present
     if ! command -v certbot &> /dev/null; then
         sudo apt-get remove certbot
@@ -168,10 +169,8 @@ setup_ssl() {
     # Configure SSL certificates
     if [ "$DNS_OK" = true ]; then
         echo "Configuring SSL certificates..."
-        # Make sure Nginx is running with HTTP only
-        sudo systemctl start nginx || true
         
-        # Get certificates for main domain and erp subdomain
+        # 獲取證書
         sudo certbot certonly --nginx \
             -d ${MAIN_DOMAIN} \
             -d erp.${MAIN_DOMAIN} \
@@ -179,21 +178,37 @@ setup_ssl() {
             --agree-tos \
             --email ${ADMIN_EMAIL}
 
-        # Then configure Nginx to use them
-        # Configure main domain
+        # 設置證書權限
+        sudo mkdir -p /etc/letsencrypt/archive
+        sudo mkdir -p /etc/letsencrypt/live
+        
+        # 添加 Nginx 用戶到 certbot 組
+        sudo usermod -a -G certbot www-data
+        
+        # 設置目錄權限
+        sudo chmod 755 /etc/letsencrypt/archive
+        sudo chmod 755 /etc/letsencrypt/live
+        
+        # 設置證書文件權限
+        sudo chown -R root:certbot /etc/letsencrypt/archive
+        sudo chown -R root:certbot /etc/letsencrypt/live
+        sudo chmod -R 750 /etc/letsencrypt/archive
+        sudo chmod -R 750 /etc/letsencrypt/live
+
+        # 配置 Nginx
         sudo certbot --nginx \
             -d ${MAIN_DOMAIN} \
             --non-interactive \
             --agree-tos \
             --redirect
 
-        # Configure erp subdomain
         sudo certbot --nginx \
             -d erp.${MAIN_DOMAIN} \
             --non-interactive \
             --agree-tos \
             --redirect
         
+        # 重新啟動 Nginx
         sudo systemctl restart nginx
         echo "SSL certificate configuration complete!"
     else
