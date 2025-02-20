@@ -283,25 +283,11 @@ server {
     listen [::]:80;
     server_name ${WEBSITE_NAME};
 
-    # Allow ACME challenge for SSL certification
+    # SSL configuration directory
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
 
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name ${WEBSITE_NAME};
-
-    # SSL configuration
-    ssl_certificate /etc/letsencrypt/live/${WEBSITE_NAME}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${WEBSITE_NAME}/privkey.pem;
-    
     # Proxy settings
     proxy_read_timeout 720s;
     proxy_connect_timeout 720s;
