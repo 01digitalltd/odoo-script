@@ -133,58 +133,70 @@ fi
 # 修改權限設置部分
 echo "=== Setting up WordPress permissions ==="
 
-# 設置目錄權限為 755
-sudo find ${WP_ROOT} -type d -exec chmod 755 {} \;
+# 確保目錄存在
+sudo mkdir -p ${WP_ROOT}
+sudo mkdir -p ${WP_ROOT}/wp-content/uploads
+sudo mkdir -p ${WP_ROOT}/wp-content/upgrade
+sudo mkdir -p ${WP_ROOT}/wp-content/plugins
+sudo mkdir -p ${WP_ROOT}/wp-content/themes
 
-# 設置文件權限為 644
-sudo find ${WP_ROOT} -type f -exec chmod 644 {} \;
+# 設置目錄擁有者
+sudo chown -R www-data:www-data ${WP_ROOT}
+
+# 設置基本權限
+sudo find ${WP_ROOT} -type d -exec chmod 775 {} \;  # 修改為 775
+sudo find ${WP_ROOT} -type f -exec chmod 664 {} \;  # 修改為 664
 
 # 特殊目錄權限
-sudo chmod 755 ${WP_ROOT}/wp-content
-sudo chmod 755 ${WP_ROOT}/wp-content/themes
-sudo chmod 755 ${WP_ROOT}/wp-content/plugins
-
-# 可寫入目錄
+sudo chmod 775 ${WP_ROOT}/wp-content
+sudo chmod 775 ${WP_ROOT}/wp-content/themes
+sudo chmod 775 ${WP_ROOT}/wp-content/plugins
 sudo chmod 775 ${WP_ROOT}/wp-content/uploads
 sudo chmod 775 ${WP_ROOT}/wp-content/upgrade
 
 # wp-config.php 需要特殊權限
-sudo chmod 600 ${WP_ROOT}/wp-config.php
+sudo chmod 660 ${WP_ROOT}/wp-config.php  # 修改為 660
 
-# 設置正確的擁有者
-sudo chown -R www-data:www-data ${WP_ROOT}
+# 添加當前用戶到 www-data 組
+sudo usermod -a -G www-data ubuntu
 
-# 確保 uploads 目錄存在並設置正確權限
-sudo mkdir -p ${WP_ROOT}/wp-content/uploads
+# 確保 Nginx 用戶也在 www-data 組
+sudo usermod -a -G www-data nginx
+
+# 設置目錄的 SGID 位
+sudo find ${WP_ROOT} -type d -exec chmod g+s {} \;
+
+# 確保上傳目錄的權限
 sudo chown -R www-data:www-data ${WP_ROOT}/wp-content/uploads
-sudo chmod 775 ${WP_ROOT}/wp-content/uploads
+sudo chmod -R 775 ${WP_ROOT}/wp-content/uploads
 
-# 添加 .htaccess 文件保護
-sudo bash -c "cat > ${WP_ROOT}/.htaccess" << EOF
-# Protect wp-config.php
-<files wp-config.php>
-order allow,deny
-deny from all
-</files>
-
-# Protect .htaccess
-<files .htaccess>
-order allow,deny
-deny from all
-</files>
-
-# Disable directory browsing
-Options -Indexes
-
-# Protect sensitive files
-<FilesMatch "^.*(error_log|wp-config\.php|php.ini|\.[hH][tT][aApP].*)$">
-Order deny,allow
-Deny from all
-</FilesMatch>
+# 設置正確的 PHP-FPM 配置
+sudo bash -c "cat > /etc/php/8.3/fpm/pool.d/www.conf" << EOF
+[www]
+user = www-data
+group = www-data
+listen = /run/php/php8.3-fpm.sock
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+pm = dynamic
+pm.max_children = 5
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
 EOF
 
-sudo chown www-data:www-data ${WP_ROOT}/.htaccess
-sudo chmod 644 ${WP_ROOT}/.htaccess
+# 重啟 PHP-FPM
+sudo systemctl restart php8.3-fpm
+
+# 重啟 Nginx
+sudo systemctl restart nginx
+
+# 驗證權限
+echo "=== Verifying permissions ==="
+ls -la ${WP_ROOT}
+ls -la ${WP_ROOT}/wp-content
+ls -la ${WP_ROOT}/wp-content/uploads
 
 # Install and configure Nginx if not installed
 echo "=== Installing and configuring Nginx ==="
