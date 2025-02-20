@@ -344,4 +344,5 @@ echo "============================================"
 
 # 在 Nginx 配置之前添加
 echo "=== Configuring Nginx user ==="
-sudo sed -i 's/user www-data;/user www-data www-data;/' /etc/nginx/nginx.conf 
+# 確保 nginx.conf 中的用戶設置正確
+sudo sed -i '1s/^user .*;/user www-data;/' /etc/nginx/nginx.conf 

@@ -170,6 +170,9 @@ setup_ssl() {
     if [ "$DNS_OK" = true ]; then
         echo "Configuring SSL certificates..."
         
+        # 停止 Nginx 服務
+        sudo systemctl stop nginx
+
         # 獲取證書
         sudo certbot certonly --nginx \
             -d ${MAIN_DOMAIN} \
@@ -182,18 +185,15 @@ setup_ssl() {
         sudo mkdir -p /etc/letsencrypt/archive
         sudo mkdir -p /etc/letsencrypt/live
         
-        # 添加 Nginx 用戶到 certbot 組
-        sudo usermod -a -G certbot www-data
+        # 設置目錄權限 - 確保 Nginx 可以讀取
+        sudo chmod -R 755 /etc/letsencrypt
+        sudo chown -R root:root /etc/letsencrypt
         
-        # 設置目錄權限
-        sudo chmod 755 /etc/letsencrypt/archive
-        sudo chmod 755 /etc/letsencrypt/live
-        
-        # 設置證書文件權限
-        sudo chown -R root:certbot /etc/letsencrypt/archive
-        sudo chown -R root:certbot /etc/letsencrypt/live
-        sudo chmod -R 750 /etc/letsencrypt/archive
-        sudo chmod -R 750 /etc/letsencrypt/live
+        # 特別設置 private key 的權限
+        sudo find /etc/letsencrypt/archive -name "privkey*.pem" -exec chmod 640 {} \;
+        sudo find /etc/letsencrypt/archive -name "privkey*.pem" -exec chown root:www-data {} \;
+        sudo find /etc/letsencrypt/live -name "privkey*.pem" -exec chmod 640 {} \;
+        sudo find /etc/letsencrypt/live -name "privkey*.pem" -exec chown root:www-data {} \;
 
         # 配置 Nginx
         sudo certbot --nginx \
@@ -208,9 +208,20 @@ setup_ssl() {
             --agree-tos \
             --redirect
         
-        # 重新啟動 Nginx
-        sudo systemctl restart nginx
-        echo "SSL certificate configuration complete!"
+        # 測試 Nginx 配置
+        echo "Testing Nginx configuration..."
+        sudo nginx -t
+
+        if [ $? -eq 0 ]; then
+            echo "Nginx configuration test passed"
+            # 啟動 Nginx 服務
+            sudo systemctl start nginx
+            echo "SSL certificate configuration complete!"
+        else
+            echo "Nginx configuration test failed"
+            echo "Please check the error messages above"
+            exit 1
+        fi
     else
         echo "DNS not propagated, skipping SSL setup"
         echo "Run the following when DNS is ready:"
