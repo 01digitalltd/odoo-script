@@ -75,24 +75,47 @@ server {
         deny all;
     }
 
-    # WordPress single site rules
+    # WordPress specific settings
     location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+        try_files $uri $uri/ /index.php?$args;
+        # Fix redirect issues
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
     }
 
-    # Pass PHP scripts to PHP-FPM
+    # Handle PHP
     location ~ \.php$ {
-        try_files \$uri =404;
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/run/php/php-fpm.sock;
-        fastcgi_index index.php;
+        try_files $uri =404;
         include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        fastcgi_param PATH_INFO \$fastcgi_path_info;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        
+        # Fix WordPress admin redirects
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        fastcgi_param HTTP_X_FORWARDED_HOST $http_host;
+        
+        # Increase timeouts
+        fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+        
+        # Buffers
         fastcgi_buffer_size 128k;
         fastcgi_buffers 4 256k;
         fastcgi_busy_buffers_size 256k;
-        fastcgi_read_timeout 600;
+    }
+
+    # Fix wp-admin redirects
+    location /wp-admin {
+        try_files $uri $uri/ /index.php?$args;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $http_host;
     }
 
     # Cache static files
