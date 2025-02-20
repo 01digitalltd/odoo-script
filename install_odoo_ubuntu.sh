@@ -257,34 +257,89 @@ if [ $INSTALL_NGINX = "True" ]; then
   
 echo "==== Configuring nginx ... ===="
 cat <<EOF > /etc/nginx/sites-available/$OE_USER
-# odoo server
+# Odoo servers
+upstream odoo {
+    server 127.0.0.1:$OE_PORT;
+}
+
+upstream odoo-chat {
+    server 127.0.0.1:$LONGPOLLING_PORT;
+}
+
+# HTTP -> HTTPS
 server {
     listen 80;
+    listen [::]:80;
     server_name ${WEBSITE_NAME};
-    
-    # 基本設置
-    client_max_body_size 500M;
-    access_log /var/log/nginx/$OE_USER-access.log;
-    error_log /var/log/nginx/$OE_USER-error.log;
 
-    # SSL 準備
+    # SSL configuration directory
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
 
-    # 代理設置
     location / {
-        proxy_pass http://127.0.0.1:$OE_PORT;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location /longpolling {
-        proxy_pass http://127.0.0.1:$LONGPOLLING_PORT;
+        return 301 https://\$host\$request_uri;
     }
 }
+
+# HTTPS Server
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${WEBSITE_NAME};
+
+    # Proxy settings
+    proxy_read_timeout 720s;
+    proxy_connect_timeout 720s;
+    proxy_send_timeout 720s;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Real-IP \$remote_addr;
+
+    # SSL parameters
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+
+    # Basic configuration
+    client_max_body_size 500M;
+    access_log /var/log/nginx/$OE_USER-access.log;
+    error_log /var/log/nginx/$OE_USER-error.log;
+
+    # Handle longpolling
+    location /longpolling {
+        proxy_pass http://odoo-chat;
+    }
+
+    # Handle / requests
+    location / {
+        proxy_redirect off;
+        proxy_pass http://odoo;
+    }
+
+    # Cache static files
+    location ~* /web/static/ {
+        proxy_cache_use_stale error timeout http_500 http_502 http_503 http_504;
+        proxy_buffering on;
+        proxy_cache STATIC;
+        proxy_cache_valid 200 60m;
+        proxy_cache_valid 404 1m;
+        proxy_pass http://odoo;
+        expires 864000;
+    }
+}
+EOF
+
+# Create cache directory for Nginx
+sudo mkdir -p /var/cache/nginx
+sudo chown www-data:www-data /var/cache/nginx
+
+# Add cache configuration to nginx.conf
+sudo bash -c 'cat >> /etc/nginx/nginx.conf' << 'EOF'
+
+# Cache configuration
+proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=STATIC:10m inactive=60m max_size=1g;
 EOF
 
 # 然後正確設置軟連接

@@ -23,17 +23,48 @@ export WP_DB_USER="${DB_USER}"
 export WP_DB_PASS="${DB_PASS}"
 EOF
 
-# 安裝必要的套件（只安裝 WordPress 特定需要的）
-echo "=== 安裝 WordPress 必要套件 ==="
-# 檢查是否已安裝 PHP-FPM
-if ! dpkg -l | grep -q "php-fpm"; then
-    sudo apt install -y php-fpm php-mysql php-curl php-gd php-intl php-mbstring php-soap php-xml php-xmlrpc php-zip
+# Install required packages
+echo "=== Installing WordPress Requirements ==="
+# Add PHP repository
+sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:ondrej/php -y
+sudo apt update
+
+# Install PHP and its extensions
+if ! dpkg -l | grep -q "php8.3-fpm"; then
+    sudo apt install -y php8.3-fpm \
+        php8.3-mysql \
+        php8.3-curl \
+        php8.3-gd \
+        php8.3-intl \
+        php8.3-mbstring \
+        php8.3-soap \
+        php8.3-xml \
+        php8.3-zip
 fi
 
-# 檢查是否已安裝 MariaDB
+# Install MariaDB
 if ! dpkg -l | grep -q "mariadb-server"; then
+    # Add MariaDB repository
+    sudo apt-get install -y apt-transport-https curl
+    sudo curl -o /etc/apt/trusted.gpg.d/mariadb_release_signing_key.asc 'https://mariadb.org/mariadb_release_signing_key.asc'
+    sudo sh -c "echo 'deb https://mirrors.xtom.com/mariadb/repo/10.11/ubuntu jammy main' > /etc/apt/sources.list.d/mariadb.list"
+    sudo apt update
     sudo apt install -y mariadb-server
 fi
+
+# Secure MariaDB installation
+echo "=== Securing MariaDB Installation ==="
+sudo mysql_secure_installation << EOF
+
+y
+$DB_PASS
+$DB_PASS
+y
+y
+y
+y
+EOF
 
 # 創建 WordPress 資料庫和用戶
 echo "=== 創建資料庫和用戶 ==="
