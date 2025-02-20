@@ -168,14 +168,38 @@ if [ -f "$WP_CONFIG" ]; then
 
 /* Fix for SSL and redirects */
 define('FORCE_SSL_ADMIN', true);
-define('WP_HOME', 'https://${DOMAIN}');
-define('WP_SITEURL', 'https://${DOMAIN}');
+define('WP_HOME', 'https://www.${DOMAIN}');
+define('WP_SITEURL', 'https://www.${DOMAIN}');
 
-if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+/* Fix for reverse proxy and HTTPS */
+if (strpos(\$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
     \$_SERVER['HTTPS'] = 'on';
+    define('FORCE_SSL_ADMIN', true);
 }
+
+if (isset(\$_SERVER['HTTP_X_FORWARDED_HOST'])) {
+    \$_SERVER['HTTP_HOST'] = \$_SERVER['HTTP_X_FORWARDED_HOST'];
+}
+
+/* Fix for login redirect */
+define('ADMIN_COOKIE_PATH', '/');
+define('COOKIEPATH', '/');
+define('SITECOOKIEPATH', '/');
+define('COOKIE_DOMAIN', '${DOMAIN}');
+
+/* Fix for admin URLs */
+define('WP_ADMIN_DIR', 'wp-admin');
+define('ADMIN_COOKIE_PATH', SITECOOKIEPATH . WP_ADMIN_DIR);
 EOF
     fi
+fi
+
+# Update WordPress URLs in database
+echo "Updating WordPress URLs in database..."
+if command -v wp > /dev/null; then
+    cd "$WP_ROOT"
+    wp option update home "https://www.${DOMAIN}" --allow-root
+    wp option update siteurl "https://www.${DOMAIN}" --allow-root
 fi
 
 echo "=== Fix complete ==="
