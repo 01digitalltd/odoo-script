@@ -266,7 +266,7 @@ proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=STATIC:10m inactive=60m m
 EOF
 
     echo "==== Configuring nginx ... ===="
-    cat <<EOF > /etc/nginx/sites-available/$OE_USER
+    cat <<'EOF' > /etc/nginx/sites-available/$OE_USER
 # Odoo servers
 upstream odoo {
     server 127.0.0.1:$OE_PORT;
@@ -291,10 +291,10 @@ server {
     proxy_read_timeout 720s;
     proxy_connect_timeout 720s;
     proxy_send_timeout 720s;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Real-IP \$remote_addr;
 
     # Basic configuration
     client_max_body_size 500M;
@@ -324,6 +324,12 @@ server {
     }
 }
 EOF
+
+    # Replace variables in the config file
+    sed -i "s/\$OE_PORT/$OE_PORT/g" /etc/nginx/sites-available/$OE_USER
+    sed -i "s/\$LONGPOLLING_PORT/$LONGPOLLING_PORT/g" /etc/nginx/sites-available/$OE_USER
+    sed -i "s/\${WEBSITE_NAME}/$WEBSITE_NAME/g" /etc/nginx/sites-available/$OE_USER
+    sed -i "s/\$OE_USER/$OE_USER/g" /etc/nginx/sites-available/$OE_USER
 
     # Set up symbolic links
     sudo mv /etc/nginx/sites-available/$OE_USER /etc/nginx/sites-available/odoo
