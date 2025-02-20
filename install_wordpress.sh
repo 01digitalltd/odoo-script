@@ -244,16 +244,10 @@ server {
     listen [::]:443 ssl;
     server_name ${MAIN_DOMAIN};
 
-    # SSL configuration
+    # 基本 SSL 設置
     ssl_certificate /etc/letsencrypt/live/${MAIN_DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${MAIN_DOMAIN}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384';
-    ssl_prefer_server_ciphers on;
-    ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:50m;
-    ssl_stapling on;
-    ssl_stapling_verify on;
 
     # Root directory and index files
     root ${WP_ROOT};
