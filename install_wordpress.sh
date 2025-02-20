@@ -123,31 +123,47 @@ sudo mkdir -p /etc/nginx/sites-enabled
 # Create Nginx configuration file
 echo "=== Creating Nginx configuration ==="
 sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
-# Default server block - handle IP access
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-    
-    # Allow ACME challenge for SSL certification
-    location /.well-known/acme-challenge {
-        root /var/www/html;
-    }
-    
-    # Redirect all other requests to HTTPS www
-    location / {
-        return 301 https://www.${MAIN_DOMAIN}\$request_uri;
-    }
-}
-
-# Main domain and www configuration
+# HTTP server - redirect to HTTPS
 server {
     listen 80;
     listen [::]:80;
     server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
-    
+
+    # Allow ACME challenge for SSL certification
+    location /.well-known/acme-challenge {
+        root /var/www/html;
+    }
+
+    # Redirect all HTTP to HTTPS
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+# HTTPS server
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
+
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/${MAIN_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${MAIN_DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers on;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    # Root directory and index files
     root ${WP_ROOT};
     index index.php index.html index.htm;
+
+    # Logs
+    access_log /var/log/nginx/${DOMAIN}_access.log;
+    error_log /var/log/nginx/${DOMAIN}_error.log;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -155,49 +171,49 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
-
-    # PHP FastCGI settings
-    fastcgi_buffers 8 16k;
-    fastcgi_buffer_size 32k;
-    fastcgi_connect_timeout 300;
-    fastcgi_send_timeout 300;
-    fastcgi_read_timeout 300;
-
-    # SSL certification
-    location /.well-known/acme-challenge {
-        root /var/www/html;
-    }
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # WordPress permalinks and main location
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
-        
-        # Security measures
-        location ~ /\. {
-            deny all;
-        }
-        
-        # Deny access to specific files
-        location ~* /(?:uploads|files)/.*\.php\$ {
-            deny all;
-        }
     }
 
-    # Handle PHP files
+    # PHP handling
     location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-        fastcgi_param HTTPS on;
-        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        include fastcgi_params;
         
-        # Security measures
-        fastcgi_intercept_errors on;
-        fastcgi_hide_header X-Powered-By;
+        # FastCGI settings
+        fastcgi_buffers 8 16k;
+        fastcgi_buffer_size 32k;
+        fastcgi_connect_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_read_timeout 300;
     }
 
     # Deny access to sensitive files
     location ~ /\.(ht|git|env|config) {
         deny all;
+    }
+
+    # Deny access to wp-config.php
+    location ~ ^/wp-config.php {
+        deny all;
+    }
+
+    # Deny access to PHP files in the uploads directory
+    location ~* /(?:uploads|files)/.*\.php\$ {
+        deny all;
+    }
+
+    # Cache static files
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
+        expires max;
+        log_not_found off;
+        access_log off;
+        add_header Cache-Control "public, no-transform";
     }
 
     # Handle common files
@@ -210,29 +226,6 @@ server {
         allow all;
         log_not_found off;
         access_log off;
-    }
-
-    # Cache static files
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
-        expires max;
-        log_not_found off;
-        access_log off;
-        add_header Cache-Control "public, no-transform";
-        
-        # CORS headers
-        add_header Access-Control-Allow-Origin "*";
-        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-        add_header Access-Control-Allow-Headers "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type";
-    }
-
-    # Deny access to uploads that aren't images, videos, music etc.
-    location ~* ^/wp-content/uploads/.*.(html|htm|shtml|php|js|swf)\$ {
-        deny all;
-    }
-
-    # Deny public access to wp-config.php
-    location ~* wp-config.php {
-        deny all;
     }
 }
 EOF
