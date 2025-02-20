@@ -255,8 +255,16 @@ if [ $INSTALL_NGINX = "True" ]; then
     sudo apt install -y nginx
     sudo systemctl enable nginx
 
+    # Remove any existing cache configurations
+    sudo rm -f /etc/nginx/conf.d/proxy-cache.conf
+    sudo sed -i '/proxy_cache_path/d' /etc/nginx/nginx.conf
+
     # Add cache configuration to http block in nginx.conf
     sudo sed -i '/http {/a \    proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=STATIC:10m inactive=60m max_size=1g;' /etc/nginx/nginx.conf
+
+    # Create cache directory
+    sudo mkdir -p /var/cache/nginx
+    sudo chown www-data:www-data /var/cache/nginx
 
     echo "==== Configuring nginx ... ===="
     cat <<'EOF' > /etc/nginx/sites-available/$OE_USER
