@@ -234,9 +234,22 @@ server {
     ssl_stapling on;
     ssl_stapling_verify on;
 
-    # Root directory and index files
-    root ${WP_ROOT};
-    index index.php index.html index.htm;
+    # Proxy settings
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host \$host;
+    proxy_set_header X-Forwarded-Port \$server_port;
+
+    # Basic settings
+    client_max_body_size 64M;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    proxy_buffers 8 16k;
+    proxy_buffer_size 32k;
 
     # Logs
     access_log /var/log/nginx/${DOMAIN}_access.log;
@@ -250,33 +263,32 @@ server {
     add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-    # WordPress permalinks and main location
+    # Main location
     location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+        proxy_pass http://127.0.0.1:8080;  # WordPress 運行在本地 8080 端口
+        proxy_redirect off;
+        
+        # WebSocket support
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 
-    # PHP handling
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-        
-        # FastCGI settings
-        fastcgi_buffers 8 16k;
-        fastcgi_buffer_size 32k;
-        fastcgi_connect_timeout 300;
-        fastcgi_send_timeout 300;
-        fastcgi_read_timeout 300;
+    # Static files caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_cache_use_stale error timeout http_500 http_502 http_503 http_504;
+        proxy_cache_valid 200 60m;
+        proxy_cache_valid 404 1m;
+        expires max;
+        log_not_found off;
+        access_log off;
+        add_header Cache-Control "public, no-transform";
+    }
 
-        # WordPress specific FastCGI settings
-        fastcgi_param HTTPS on;
-        fastcgi_param HTTP_X_FORWARDED_PROTO https;
-        
-        # Cookie and session handling
-        fastcgi_intercept_errors on;
-        fastcgi_hide_header X-Powered-By;
-        fastcgi_param PHP_VALUE "session.cookie_httponly=1;session.cookie_secure=1;session.use_only_cookies=1";
+    # PHP files handling
+    location ~ \.php\$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_intercept_errors on;
     }
 
     # Deny access to sensitive files
@@ -289,17 +301,9 @@ server {
         deny all;
     }
 
-    # Deny access to PHP files in the uploads directory
+    # Deny access to PHP files in uploads directory
     location ~* /(?:uploads|files)/.*\.php\$ {
         deny all;
-    }
-
-    # Cache static files
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
-        expires max;
-        log_not_found off;
-        access_log off;
-        add_header Cache-Control "public, no-transform";
     }
 
     # Handle common files
@@ -315,40 +319,12 @@ server {
     }
 
     # WordPress specific settings
-    client_max_body_size 64M;
-    
-    # Prevent PHP execution in uploads directory
-    location /wp-content/uploads/ {
-        location ~ \.php$ {
-            deny all;
-        }
-    }
-
-    # Prevent direct access to .php files in wp-includes
-    location ~* /wp-includes/.*\.php$ {
-        deny all;
-    }
-
-    # Allow XML-RPC
-    location /xmlrpc.php {
-        limit_except POST {
-            deny all;
-        }
-    }
-
-    # WordPress admin area
     location /wp-admin {
-        location ~ \.php$ {
-            include snippets/fastcgi-php.conf;
-            fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-            include fastcgi_params;
-            fastcgi_param HTTPS on;
-            fastcgi_param HTTP_X_FORWARDED_PROTO https;
-            fastcgi_buffer_size 128k;
-            fastcgi_buffers 4 256k;
-            fastcgi_busy_buffers_size 256k;
-        }
+        proxy_pass http://127.0.0.1:8080;
+        proxy_redirect off;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
     }
 }
 EOF
@@ -364,6 +340,39 @@ sudo nginx -t && sudo systemctl reload nginx || {
     echo "Nginx configuration test failed"
     exit 1
 }
+
+# Create local WordPress Nginx configuration
+echo "=== Creating local WordPress Nginx configuration ==="
+sudo cat > /etc/nginx/sites-available/wordpress_local <<EOF
+server {
+    listen 127.0.0.1:8080;
+    server_name localhost;
+
+    root ${WP_ROOT};
+    index index.php index.html index.htm;
+
+    # PHP handling
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        include fastcgi_params;
+        
+        fastcgi_buffers 8 16k;
+        fastcgi_buffer_size 32k;
+        fastcgi_connect_timeout 300;
+        fastcgi_send_timeout 300;
+        fastcgi_read_timeout 300;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+}
+EOF
+
+# Enable the local configuration
+sudo ln -sf /etc/nginx/sites-available/wordpress_local /etc/nginx/sites-enabled/
 
 # 輸出配置信息
 echo "============================================"
