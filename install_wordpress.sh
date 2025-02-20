@@ -99,17 +99,9 @@ echo "${KEYS}" | sudo tee -a ${WP_ROOT}/wp-config.php > /dev/null
 # 在添加安全密鑰之後，添加以下配置
 sudo bash -c "cat >> ${WP_ROOT}/wp-config.php" << EOF
 
-/* SSL and Cookie Settings */
-define('FORCE_SSL_ADMIN', true);
-define('FORCE_SSL_LOGIN', true);
-define('COOKIE_DOMAIN', false);
-define('ADMIN_COOKIE_PATH', '/');
-define('COOKIEPATH', '/');
-define('SITECOOKIEPATH', '/');
-
 /* Custom WP_HOME and WP_SITEURL */
-define('WP_HOME', 'https://${MAIN_DOMAIN}');
-define('WP_SITEURL', 'https://${MAIN_DOMAIN}');
+define('WP_HOME', 'http://${MAIN_DOMAIN}');
+define('WP_SITEURL', 'http://${MAIN_DOMAIN}');
 
 /* Prevent file editing from WordPress admin */
 define('DISALLOW_FILE_EDIT', true);
@@ -211,43 +203,11 @@ sudo mkdir -p /etc/nginx/sites-enabled
 # Create Nginx configuration file
 echo "=== Creating Nginx configuration ==="
 sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
-# Redirect www to non-www (HTTP only)
+# Main server
 server {
     listen 80;
     listen [::]:80;
-    server_name www.${MAIN_DOMAIN};
-
-    # Redirect all www traffic to non-www HTTPS
-    return 301 https://${MAIN_DOMAIN}\$request_uri;
-}
-
-# Main HTTP server
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${MAIN_DOMAIN};
-
-    # Allow ACME challenge for SSL certification
-    location /.well-known/acme-challenge {
-        root /var/www/html;
-    }
-
-    # Redirect all HTTP to HTTPS
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-# Main HTTPS server
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name ${MAIN_DOMAIN};
-
-    # 基本 SSL 設置
-    ssl_certificate /etc/letsencrypt/live/${MAIN_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${MAIN_DOMAIN}/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
+    server_name ${MAIN_DOMAIN} www.${MAIN_DOMAIN};
 
     # Root directory and index files
     root ${WP_ROOT};
@@ -315,7 +275,6 @@ server {
 
     # WordPress specific settings
     client_max_body_size 20M;
-
 }
 EOF
 
