@@ -285,10 +285,21 @@ sudo rm -f /etc/nginx/sites-enabled/default
 
 # Test and reload Nginx
 echo "=== Testing and reloading Nginx ==="
-sudo nginx -t && sudo systemctl reload nginx || {
+# 先測試配置
+if sudo nginx -t; then
+    echo "Nginx configuration test passed"
+    # 檢查 Nginx 服務狀態
+    if systemctl is-active --quiet nginx; then
+        echo "Reloading Nginx configuration..."
+        sudo systemctl reload nginx
+    else
+        echo "Starting Nginx service..."
+        sudo systemctl start nginx
+    fi
+else
     echo "Nginx configuration test failed"
     exit 1
-}
+fi
 
 # 輸出配置信息
 echo "============================================"

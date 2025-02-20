@@ -170,8 +170,11 @@ setup_ssl() {
     if [ "$DNS_OK" = true ]; then
         echo "Configuring SSL certificates for Odoo..."
         
-        # 停止 Nginx 服務
-        sudo systemctl stop nginx
+        # 停止 Nginx 服務（如果正在運行）
+        if systemctl is-active --quiet nginx; then
+            echo "Stopping Nginx service..."
+            sudo systemctl stop nginx
+        fi
 
         # 只為 Odoo 獲取證書
         sudo certbot certonly --nginx \
@@ -203,11 +206,9 @@ setup_ssl() {
         
         # 測試 Nginx 配置
         echo "Testing Nginx configuration..."
-        sudo nginx -t
-
-        if [ $? -eq 0 ]; then
+        if sudo nginx -t; then
             echo "Nginx configuration test passed"
-            # 啟動 Nginx 服務
+            echo "Starting Nginx service..."
             sudo systemctl start nginx
             echo "SSL certificate configuration complete!"
         else
