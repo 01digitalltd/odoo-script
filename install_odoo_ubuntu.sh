@@ -252,11 +252,22 @@ sudo systemctl start $OE_USER.service
 #--------------------------------------------------
 echo "==== Installing nginx ... ===="
 if [ $INSTALL_NGINX = "True" ]; then
-  sudo apt install -y nginx
-  sudo systemctl enable nginx
-  
-echo "==== Configuring nginx ... ===="
-cat <<EOF > /etc/nginx/sites-available/$OE_USER
+    sudo apt install -y nginx
+    sudo systemctl enable nginx
+
+    # Add cache configuration to nginx.conf first
+    sudo bash -c 'cat >> /etc/nginx/nginx.conf' << 'EOF'
+
+# Cache configuration
+proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=STATIC:10m inactive=60m max_size=1g;
+EOF
+
+    # Create cache directory for Nginx
+    sudo mkdir -p /var/cache/nginx
+    sudo chown www-data:www-data /var/cache/nginx
+    
+    echo "==== Configuring nginx ... ===="
+    cat <<EOF > /etc/nginx/sites-available/$OE_USER
 # Odoo servers
 upstream odoo {
     server 127.0.0.1:$OE_PORT;
@@ -272,7 +283,6 @@ server {
     listen [::]:80;
     server_name ${WEBSITE_NAME};
 
-    # SSL configuration directory
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
@@ -296,11 +306,6 @@ server {
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto \$scheme;
     proxy_set_header X-Real-IP \$remote_addr;
-
-    # SSL parameters
-    ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:50m;
-    ssl_session_tickets off;
 
     # Basic configuration
     client_max_body_size 500M;
@@ -331,36 +336,25 @@ server {
 }
 EOF
 
-# Create cache directory for Nginx
-sudo mkdir -p /var/cache/nginx
-sudo chown www-data:www-data /var/cache/nginx
+    # Set up symbolic links
+    sudo mv /etc/nginx/sites-available/$OE_USER /etc/nginx/sites-available/odoo
+    sudo ln -s /etc/nginx/sites-available/odoo /etc/nginx/sites-enabled/odoo
 
-# Add cache configuration to nginx.conf
-sudo bash -c 'cat >> /etc/nginx/nginx.conf' << 'EOF'
+    # Remove default config
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo rm -f /etc/nginx/sites-available/default
 
-# Cache configuration
-proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=STATIC:10m inactive=60m max_size=1g;
-EOF
+    # Set correct permissions
+    sudo chown root:root /etc/nginx/sites-available/odoo
+    sudo chmod 644 /etc/nginx/sites-available/odoo
 
-# 然後正確設置軟連接
-sudo mv /etc/nginx/sites-available/$OE_USER /etc/nginx/sites-available/odoo
-sudo ln -s /etc/nginx/sites-available/odoo /etc/nginx/sites-enabled/odoo
+    # Test and reload Nginx
+    sudo nginx -t && sudo systemctl reload nginx
 
-# 移除默認配置
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo rm -f /etc/nginx/sites-available/default
-
-# 設置正確的權限
-sudo chown root:root /etc/nginx/sites-available/odoo
-sudo chmod 644 /etc/nginx/sites-available/odoo
-
-# 測試並重載 Nginx
-sudo nginx -t && sudo systemctl reload nginx
-
-sudo su root -c "printf 'proxy_mode = True\n' >> /etc/${OE_CONFIG}.conf"
-echo "Done! The Nginx server is up and running. Configuration can be found at /etc/nginx/sites-available/$OE_USER"
+    sudo su root -c "printf 'proxy_mode = True\n' >> /etc/${OE_CONFIG}.conf"
+    echo "Done! The Nginx server is up and running. Configuration can be found at /etc/nginx/sites-available/odoo"
 else
-  echo "===== Nginx isn't installed due to choice of the user! ========"
+    echo "===== Nginx isn't installed due to choice of the user! ========"
 fi
 
 # Final message

@@ -109,10 +109,21 @@ fi
 sudo chown -R www-data:www-data ${WP_ROOT}
 sudo chmod -R 755 ${WP_ROOT}
 
-# 創建 Nginx 配置文件
-echo "=== 配置 Nginx ==="
+# Install and configure Nginx if not installed
+echo "=== Installing and configuring Nginx ==="
+if ! command -v nginx &> /dev/null; then
+    sudo apt update
+    sudo apt install -y nginx
+fi
+
+# Create Nginx directories if they don't exist
+sudo mkdir -p /etc/nginx/sites-available
+sudo mkdir -p /etc/nginx/sites-enabled
+
+# Create Nginx configuration file
+echo "=== Creating Nginx configuration ==="
 sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
-# 默認伺服器塊 - 處理 IP 訪問
+# Default server block - handle IP access
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -127,7 +138,7 @@ server {
     }
 }
 
-# 主域名和 www 配置
+# Main domain and www configuration
 server {
     listen 80;
     listen [::]:80;
@@ -172,9 +183,17 @@ server {
 }
 EOF
 
-# 創建軟連接
-sudo ln -s /etc/nginx/sites-available/${NGINX_CONF} /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+# Create symbolic link and verify configuration
+echo "=== Setting up Nginx configuration ==="
+sudo ln -sf /etc/nginx/sites-available/${NGINX_CONF} /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Test and reload Nginx
+echo "=== Testing and reloading Nginx ==="
+sudo nginx -t && sudo systemctl reload nginx || {
+    echo "Nginx configuration test failed"
+    exit 1
+}
 
 # 輸出配置信息
 echo "============================================"
