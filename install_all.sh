@@ -168,21 +168,28 @@ setup_ssl() {
     # Configure SSL certificates
     if [ "$DNS_OK" = true ]; then
         echo "Configuring SSL certificates..."
-        # Wait a moment for Nginx to be ready
-        sleep 5
-        sudo systemctl restart nginx
+        # Make sure Nginx is running with HTTP only
+        sudo systemctl start nginx || true
+        
+        # Get certificates first
+        sudo certbot certonly --nginx \
+            -d ${MAIN_DOMAIN} \
+            -d www.${MAIN_DOMAIN} \
+            -d erp.${MAIN_DOMAIN} \
+            --non-interactive \
+            --agree-tos \
+            --email ${ADMIN_EMAIL}
 
-        # Configure SSL for all domains
+        # Then configure Nginx to use them
         sudo certbot --nginx \
             -d ${MAIN_DOMAIN} \
             -d www.${MAIN_DOMAIN} \
             -d erp.${MAIN_DOMAIN} \
             --non-interactive \
             --agree-tos \
-            --redirect \
-            --email ${ADMIN_EMAIL}
+            --redirect
         
-        sudo systemctl reload nginx
+        sudo systemctl restart nginx
         echo "SSL certificate configuration complete!"
     else
         echo "DNS not propagated, skipping SSL setup"

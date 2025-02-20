@@ -276,35 +276,25 @@ upstream odoo-chat {
     server 127.0.0.1:$LONGPOLLING_PORT;
 }
 
-# HTTP -> HTTPS
+# HTTP -> HTTPS and main configuration
 server {
     listen 80;
     listen [::]:80;
     server_name ${WEBSITE_NAME};
 
+    # SSL configuration directory
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
-
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-# HTTPS Server
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${WEBSITE_NAME};
 
     # Proxy settings
     proxy_read_timeout 720s;
     proxy_connect_timeout 720s;
     proxy_send_timeout 720s;
-    proxy_set_header X-Forwarded-Host \$host;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
 
     # Basic configuration
     client_max_body_size 500M;
