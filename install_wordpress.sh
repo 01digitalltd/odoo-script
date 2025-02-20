@@ -260,8 +260,8 @@ server {
     index index.php index.html index.htm;
 
     # Logs
-    access_log /var/log/nginx/${DOMAIN}_access.log;
-    error_log /var/log/nginx/${DOMAIN}_error.log;
+    error_log /var/log/nginx/${DOMAIN}.error;
+    access_log /var/log/nginx/${DOMAIN}.access;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -273,7 +273,25 @@ server {
 
     # WordPress permalinks and main location
     location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+        try_files \$uri \$uri/ /index.php;
+    }
+
+    # WP REST API
+    location ~ ^/wp-json/ {
+        rewrite ^/wp-json/(.*?)$ /?rest_route=/\$1 last;
+    }
+
+    # WordPress sitemap
+    location ~* /wp-sitemap.*\.xml {
+        try_files \$uri \$uri/ /index.php\$is_args\$args;
+    }
+
+    # Error pages
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;
+
+    location = /50x.html {
+        root /usr/share/nginx/html;
     }
 
     # PHP handling
@@ -284,8 +302,8 @@ server {
         include fastcgi_params;
         
         # FastCGI settings
-        fastcgi_buffers 8 16k;
-        fastcgi_buffer_size 32k;
+        fastcgi_buffers 1024 4k;
+        fastcgi_buffer_size 128k;
         fastcgi_connect_timeout 300;
         fastcgi_send_timeout 300;
         fastcgi_read_timeout 300;
@@ -297,80 +315,34 @@ server {
         # Cookie and session handling
         fastcgi_intercept_errors on;
         fastcgi_hide_header X-Powered-By;
-        fastcgi_param PHP_VALUE "session.cookie_httponly=1;session.cookie_secure=1;session.use_only_cookies=1";
     }
 
-    # Deny access to sensitive files
-    location ~ /\.(ht|git|env|config) {
-        deny all;
-    }
-
-    # Deny access to wp-config.php
-    location ~ ^/wp-config.php {
-        deny all;
-    }
-
-    # Deny access to PHP files in the uploads directory
-    location ~* /(?:uploads|files)/.*\.php\$ {
-        deny all;
-    }
+    # Enable gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1000;
+    gzip_comp_level 5;
+    gzip_types application/json text/css application/x-javascript application/javascript image/svg+xml;
+    gzip_proxied any;
 
     # Cache static files
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
-        expires max;
-        log_not_found off;
+    location ~* \.(jpg|jpeg|gif|png|webp|svg|woff|woff2|ttf|css|js|ico|xml)$ {
         access_log off;
+        log_not_found off;
+        expires 360d;
         add_header Cache-Control "public, no-transform";
     }
 
-    # Handle common files
-    location = /favicon.ico {
-        log_not_found off;
+    # Deny access to hidden files
+    location ~ /\.ht {
         access_log off;
-    }
-
-    location = /robots.txt {
-        allow all;
         log_not_found off;
-        access_log off;
-    }
-
-    # WordPress specific settings
-    client_max_body_size 64M;
-    
-    # Prevent PHP execution in uploads directory
-    location /wp-content/uploads/ {
-        location ~ \.php$ {
-            deny all;
-        }
-    }
-
-    # Prevent direct access to .php files in wp-includes
-    location ~* /wp-includes/.*\.php$ {
         deny all;
     }
 
-    # Allow XML-RPC
-    location /xmlrpc.php {
-        limit_except POST {
-            deny all;
-        }
-    }
+    # WordPress specific settings
+    client_max_body_size 20M;
 
-    # WordPress admin area
-    location /wp-admin {
-        location ~ \.php$ {
-            include snippets/fastcgi-php.conf;
-            fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-            include fastcgi_params;
-            fastcgi_param HTTPS on;
-            fastcgi_param HTTP_X_FORWARDED_PROTO https;
-            fastcgi_buffer_size 128k;
-            fastcgi_buffers 4 256k;
-            fastcgi_busy_buffers_size 256k;
-        }
-    }
 }
 EOF
 
