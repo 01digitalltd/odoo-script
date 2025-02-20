@@ -152,7 +152,7 @@ sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
 server {
     listen 80;
     listen [::]:80;
-    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
+    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};  # 只監聽 WordPress 的域名
 
     # Allow ACME challenge for SSL certification
     location /.well-known/acme-challenge {
@@ -169,11 +169,13 @@ server {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
+    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};  # 只監聽 WordPress 的域名
 
-    # SSL configuration
+    # SSL configuration - 使用獨立的證書路徑
     ssl_certificate /etc/letsencrypt/live/${MAIN_DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${MAIN_DOMAIN}/privkey.pem;
+    
+    # 其他 SSL 設置保持不變
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384';
     ssl_prefer_server_ciphers on;

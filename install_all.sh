@@ -254,3 +254,15 @@ echo "檢查 DNS 設置..."
 check_dns $MAIN_DOMAIN
 check_dns "www.${MAIN_DOMAIN}"
 check_dns "erp.${MAIN_DOMAIN}" 
+
+# 添加到安裝完成後的檢查
+echo "=== 檢查 Nginx 配置 ==="
+sudo nginx -t
+
+if [ $? -eq 0 ]; then
+    echo "Nginx 配置檢查通過"
+    sudo systemctl restart nginx
+else
+    echo "Nginx 配置有誤，請檢查配置文件"
+    exit 1
+fi 
