@@ -97,6 +97,30 @@ KEYS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
 sudo sed -i "/put your unique phrase here/d" ${WP_ROOT}/wp-config.php
 echo "${KEYS}" | sudo tee -a ${WP_ROOT}/wp-config.php > /dev/null
 
+# 在添加安全密鑰之後，添加以下配置
+sudo bash -c "cat >> ${WP_ROOT}/wp-config.php" << EOF
+
+/* SSL and Cookie Settings */
+define('FORCE_SSL_ADMIN', true);
+define('FORCE_SSL_LOGIN', true);
+define('COOKIE_DOMAIN', false);
+define('ADMIN_COOKIE_PATH', '/');
+define('COOKIEPATH', '/');
+define('SITECOOKIEPATH', '/');
+
+/* Custom WP_HOME and WP_SITEURL */
+define('WP_HOME', 'https://${WWW_DOMAIN}');
+define('WP_SITEURL', 'https://${WWW_DOMAIN}');
+
+/* Prevent file editing from WordPress admin */
+define('DISALLOW_FILE_EDIT', true);
+
+/* Memory limits */
+define('WP_MEMORY_LIMIT', '256M');
+define('WP_MAX_MEMORY_LIMIT', '512M');
+
+EOF
+
 # 檢查配置文件替換是否成功
 echo "=== 驗證 WordPress 配置 ==="
 if grep -q "database_name_here\|username_here\|password_here" ${WP_ROOT}/wp-config.php; then
@@ -180,10 +204,10 @@ server {
     }
 
     # PHP handling
-    location ~ \.php\$ {
+    location ~ \.php$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
         
         # FastCGI settings
@@ -192,6 +216,15 @@ server {
         fastcgi_connect_timeout 300;
         fastcgi_send_timeout 300;
         fastcgi_read_timeout 300;
+
+        # WordPress specific FastCGI settings
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        
+        # Cookie and session handling
+        fastcgi_intercept_errors on;
+        fastcgi_hide_header X-Powered-By;
+        fastcgi_param PHP_VALUE "session.cookie_httponly=1;session.cookie_secure=1;session.use_only_cookies=1";
     }
 
     # Deny access to sensitive files
@@ -227,6 +260,43 @@ server {
         allow all;
         log_not_found off;
         access_log off;
+    }
+
+    # WordPress specific settings
+    client_max_body_size 64M;
+    
+    # Prevent PHP execution in uploads directory
+    location /wp-content/uploads/ {
+        location ~ \.php$ {
+            deny all;
+        }
+    }
+
+    # Prevent direct access to .php files in wp-includes
+    location ~* /wp-includes/.*\.php$ {
+        deny all;
+    }
+
+    # Allow XML-RPC
+    location /xmlrpc.php {
+        limit_except POST {
+            deny all;
+        }
+    }
+
+    # WordPress admin area
+    location /wp-admin {
+        location ~ \.php$ {
+            include snippets/fastcgi-php.conf;
+            fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            include fastcgi_params;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+            fastcgi_buffer_size 128k;
+            fastcgi_buffers 4 256k;
+            fastcgi_busy_buffers_size 256k;
+        }
     }
 }
 EOF
