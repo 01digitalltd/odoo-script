@@ -8,10 +8,13 @@ if [ -z "$1" ]; then
 fi
 
 DOMAIN=$1
+MAIN_DOMAIN=$DOMAIN
+WWW_DOMAIN="www.${DOMAIN}"
 WP_ROOT="/var/www/${DOMAIN}"
 DB_NAME=$(echo ${DOMAIN} | sed 's/[.-]//g')
 DB_USER="${DB_NAME}_user"
 DB_PASS=$(openssl rand -base64 12)
+NGINX_CONF="wordpress"  # 使用固定的配置文件名
 
 # 創建環境變量文件
 sudo bash -c "cat > /tmp/wp_env.sh" << EOF
@@ -20,10 +23,17 @@ export WP_DB_USER="${DB_USER}"
 export WP_DB_PASS="${DB_PASS}"
 EOF
 
-# 安裝必要的套件
-echo "=== 安裝必要的套件 ==="
-sudo apt update
-sudo apt install -y php-fpm php-mysql php-curl php-gd php-intl php-mbstring php-soap php-xml php-xmlrpc php-zip mariadb-server
+# 安裝必要的套件（只安裝 WordPress 特定需要的）
+echo "=== 安裝 WordPress 必要套件 ==="
+# 檢查是否已安裝 PHP-FPM
+if ! dpkg -l | grep -q "php-fpm"; then
+    sudo apt install -y php-fpm php-mysql php-curl php-gd php-intl php-mbstring php-soap php-xml php-xmlrpc php-zip
+fi
+
+# 檢查是否已安裝 MariaDB
+if ! dpkg -l | grep -q "mariadb-server"; then
+    sudo apt install -y mariadb-server
+fi
 
 # 創建 WordPress 資料庫和用戶
 echo "=== 創建資料庫和用戶 ==="
@@ -70,20 +80,34 @@ sudo chmod -R 755 ${WP_ROOT}
 
 # 創建 Nginx 配置文件
 echo "=== 配置 Nginx ==="
-sudo cat > /etc/nginx/sites-available/${DOMAIN} <<EOF
-# 主域名重定向到 www
+sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
+# 默認伺服器塊 - 處理 IP 訪問
 server {
-    listen 80;
-    server_name ${DOMAIN};
-    return 301 \$scheme://www.${DOMAIN}\$request_uri;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    
+    location /.well-known/acme-challenge {
+        root /var/www/html;
+    }
+    
+    location / {
+        return 301 https://www.${MAIN_DOMAIN}\$request_uri;
+    }
 }
 
-# www 子域名配置
+# 主域名和 www 配置
 server {
     listen 80;
-    server_name www.${DOMAIN};
+    listen [::]:80;
+    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
+    
     root ${WP_ROOT};
     index index.php index.html index.htm;
+
+    location /.well-known/acme-challenge {
+        root /var/www/html;
+    }
 
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
@@ -91,7 +115,7 @@ server {
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
     }
 
     location ~ /\.ht {
@@ -109,34 +133,17 @@ server {
         access_log off;
     }
 
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico)$ {
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
         expires max;
         log_not_found off;
+        add_header Cache-Control "public, no-transform";
     }
 }
 EOF
 
-# 啟用網站配置
-sudo ln -s /etc/nginx/sites-available/${DOMAIN} /etc/nginx/sites-enabled/
+# 創建軟連接
+sudo ln -s /etc/nginx/sites-available/${NGINX_CONF} /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-
-# 修改 SSL 安裝部分
-echo "=== 安裝 SSL 證書 ==="
-if [ "$2" != "no-ssl" ]; then
-    # 確保 certbot 已安裝
-    sudo apt-get remove certbot
-    sudo snap install core
-    sudo snap refresh core
-    sudo snap install --classic certbot
-    sudo ln -s /snap/bin/certbot /usr/bin/certbot
-    
-    # 配置 SSL
-    sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}
-    sudo systemctl reload nginx
-    echo "SSL 證書安裝完成！"
-else
-    echo "跳過 SSL 配置，等待 DNS 生效後再配置"
-fi
 
 # 輸出配置信息
 echo "============================================"

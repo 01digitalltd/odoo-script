@@ -57,14 +57,14 @@ sudo apt upgrade -y
 sudo apt autoremove -y
 
 #----------------------------------------------------
-# Disabing password authentication
+# SSH configuration is removed to maintain connection
 #----------------------------------------------------
-echo "=== Disabling password authentication ... ==="
-sudo apt -y install openssh-server
-sudo sed -i 's/#ChallengeResponseAuthentication yes/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
-sudo sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config 
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo systemctl restart sshd
+# echo "=== Disabling password authentication ... ==="
+# sudo apt -y install openssh-server
+# sudo sed -i 's/#ChallengeResponseAuthentication yes/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+# sudo sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config 
+# sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# sudo systemctl restart sshd
 
 #--------------------------------------------------
 # Setting up the timezones
@@ -258,63 +258,32 @@ if [ $INSTALL_NGINX = "True" ]; then
 echo "==== Configuring nginx ... ===="
 cat <<EOF > /etc/nginx/sites-available/$OE_USER
 # odoo server
-upstream $OE_USER {
-    server 127.0.0.1:$OE_PORT;
-}
-
-upstream ${OE_USER}chat {
-    server 127.0.0.1:$LONGPOLLING_PORT;
-}
-
 server {
     listen 80;
-    server_name ${WEBSITE_NAME};  # erp.domain.com
+    server_name ${WEBSITE_NAME};
     
-    # Specifies the maximum accepted body size of a client request
+    # 基本設置
     client_max_body_size 500M;
-
-    # Log files
     access_log /var/log/nginx/$OE_USER-access.log;
     error_log /var/log/nginx/$OE_USER-error.log;
 
-    # Increase proxy buffer size
-    proxy_buffers 16 64k;
-    proxy_buffer_size 128k;
+    # SSL 準備
+    location /.well-known/acme-challenge {
+        root /var/www/html;
+    }
 
-    # Timeout configuration
-    proxy_read_timeout 720s;
-    proxy_connect_timeout 720s;
-    proxy_send_timeout 720s;
-
-    # Proxy headers
-    proxy_set_header Host \$host;
-    proxy_set_header X-Forwarded-Host \$host;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_set_header X-Real-IP \$remote_addr;
-
-    # Redirect requests to odoo backend server
+    # 代理設置
     location / {
-        proxy_redirect off;
-        proxy_pass http://$OE_USER;
+        proxy_pass http://127.0.0.1:$OE_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    # Redirect longpoll requests to odoo longpolling port
     location /longpolling {
-        proxy_pass http://${OE_USER}chat;
+        proxy_pass http://127.0.0.1:$LONGPOLLING_PORT;
     }
-
-    # Cache static files
-    location ~* /web/static/ {
-        proxy_cache_valid 200 90m;
-        proxy_buffering on;
-        expires 864000;
-        proxy_pass http://$OE_USER;
-    }
-
-    # Gzip compression
-    gzip_types text/css text/less text/plain text/xml application/xml application/json application/javascript;
-    gzip on;
 }
 EOF
 
@@ -338,24 +307,6 @@ echo "Done! The Nginx server is up and running. Configuration can be found at /e
 else
   echo "===== Nginx isn't installed due to choice of the user! ========"
 fi
-
-#--------------------------------------------------
-# Enable ssl with certbot
-#--------------------------------------------------
-echo "==== Installing certbot certificate ... ===="
-if [ $INSTALL_NGINX = "True" ] && [ $ENABLE_SSL = "True" ]  && [ $WEBSITE_NAME != "example.com" ];then
-  sudo apt-get remove certbot
-  sudo snap install core
-  sudo snap refresh core
-  sudo snap install --classic certbot
-  sudo ln -s /snap/bin/certbot /usr/bin/certbot
-  sudo certbot --nginx -d $WEBSITE_NAME 
-  sudo systemctl reload nginx  
-  echo "============ SSL/HTTPS is enabled! ==========="
-else
-  echo "==== SSL/HTTPS isn't enabled due to choice of the user or because of a misconfiguration! ======"
-fi
-
 
 # Final message
 # Check Odoo service status

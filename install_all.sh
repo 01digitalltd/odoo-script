@@ -70,7 +70,29 @@ wait_for_dns() {
 # 設置域名
 MAIN_DOMAIN=$1
 ODOO_DOMAIN="erp.${MAIN_DOMAIN}"
-WP_DOMAIN="www.${MAIN_DOMAIN}"  # 修改為 www 子域名
+WP_DOMAIN="${MAIN_DOMAIN}"  # WordPress 將處理 www 重定向
+
+# 檢查所有域名的 DNS
+check_domains() {
+    local domains=("$MAIN_DOMAIN" "www.$MAIN_DOMAIN" "erp.$MAIN_DOMAIN")
+    for domain in "${domains[@]}"; do
+        echo "檢查 $domain..."
+        if ! host $domain > /dev/null 2>&1; then
+            echo "警告: $domain DNS 未設置"
+            return 1
+        fi
+    done
+    return 0
+}
+
+# 檢查域名
+if ! check_domains; then
+    echo "是否繼續安裝？(y/n)"
+    read -r answer
+    if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
 
 # 檢查 Nginx 配置
 check_nginx_configs() {
@@ -123,46 +145,16 @@ sudo chmod +x install_wordpress.sh
 sudo sed -i "s/WEBSITE_NAME=\".*\"/WEBSITE_NAME=\"${ODOO_DOMAIN}\"/" install_odoo_ubuntu.sh
 sudo sed -i "s/ADMIN_EMAIL=\".*\"/ADMIN_EMAIL=\"${ADMIN_EMAIL}\"/" install_odoo_ubuntu.sh
 
-# 傳遞 DNS 狀態給安裝腳本
-if [ "$DNS_OK" = true ]; then
-    echo "=== 配置 SSL ==="
-    # 確保 certbot 已安裝
-    sudo apt-get remove certbot
-    sudo snap install core
-    sudo snap refresh core
-    sudo snap install --classic certbot
-    sudo ln -s /snap/bin/certbot /usr/bin/certbot
+# 安裝 WordPress
+echo "=== 開始安裝 WordPress ==="
+sudo bash install_wordpress.sh ${WP_DOMAIN}
 
-    # 設置 SSL 為啟用
-    sudo sed -i "s/ENABLE_SSL=\".*\"/ENABLE_SSL=\"True\"/" install_odoo_ubuntu.sh
-    
-    # WordPress 安裝時啟用 SSL
-    sudo bash install_wordpress.sh ${WP_DOMAIN} "ssl"
-    
-    # 安裝 Odoo
-    sudo bash install_odoo_ubuntu.sh
+# 安裝 Odoo
+echo "=== 開始安裝 Odoo ==="
+sudo bash install_odoo_ubuntu.sh
 
-    # SSL 配置
-    echo "配置 SSL 證書..."
-    # 為所有域名安裝 SSL
-    sudo certbot --nginx \
-        -d ${MAIN_DOMAIN} \
-        -d www.${MAIN_DOMAIN} \
-        -d erp.${MAIN_DOMAIN} \
-        --non-interactive \
-        --agree-tos \
-        --email ${ADMIN_EMAIL}
-else
-    echo "DNS 未生效，暫時跳過 SSL 配置"
-    sudo sed -i "s/ENABLE_SSL=\".*\"/ENABLE_SSL=\"False\"/" install_odoo_ubuntu.sh
-    sudo bash install_wordpress.sh ${WP_DOMAIN} "no-ssl"
-    sudo bash install_odoo_ubuntu.sh
-    
-    # 提供後續配置 SSL 的說明
-    echo "請在 DNS 生效後運行以下命令配置 SSL："
-    echo "sudo certbot --nginx -d ${WP_DOMAIN} -d www.${WP_DOMAIN}"
-    echo "sudo certbot --nginx -d ${ODOO_DOMAIN}"
-fi
+# 配置 SSL
+setup_ssl
 
 # 記錄 Odoo 信息
 sudo bash -c "cat >> $LOG_FILE" << EOF
@@ -172,10 +164,6 @@ $(sudo grep "Password superadmin" /var/log/odoo_install.log)
 數據庫用戶：odoo
 ----------------------------------------
 EOF
-
-# 安裝 WordPress
-echo "=== 開始安裝 WordPress ==="
-sudo bash install_wordpress.sh ${WP_DOMAIN}
 
 # 獲取 WordPress 憑據
 source /tmp/wp_env.sh
@@ -221,3 +209,39 @@ echo "檢查 DNS 設置..."
 check_dns $MAIN_DOMAIN
 check_dns "www.${MAIN_DOMAIN}"
 check_dns "erp.${MAIN_DOMAIN}" 
+
+# 安裝和配置 SSL
+setup_ssl() {
+    echo "=== 安裝和配置 SSL ==="
+    # 安裝 certbot
+    if ! command -v certbot &> /dev/null; then
+        sudo apt-get remove certbot
+        sudo snap install core
+        sudo snap refresh core
+        sudo snap install --classic certbot
+        sudo ln -s /snap/bin/certbot /usr/bin/certbot
+    fi
+
+    # 配置 SSL 證書
+    if [ "$DNS_OK" = true ]; then
+        echo "配置 SSL 證書..."
+        sudo certbot --nginx \
+            -d ${MAIN_DOMAIN} \
+            -d www.${MAIN_DOMAIN} \
+            -d erp.${MAIN_DOMAIN} \
+            --non-interactive \
+            --agree-tos \
+            --redirect \
+            --email ${ADMIN_EMAIL}
+        
+        sudo systemctl reload nginx
+        echo "SSL 證書配置完成！"
+    else
+        echo "DNS 未生效，暫時跳過 SSL 配置"
+        echo "請在 DNS 生效後運行："
+        echo "sudo certbot --nginx -d ${MAIN_DOMAIN} -d www.${MAIN_DOMAIN} -d erp.${MAIN_DOMAIN}"
+    fi
+}
+
+# 在安裝 WordPress 和 Odoo 之後調用
+setup_ssl 
