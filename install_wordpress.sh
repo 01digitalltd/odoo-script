@@ -129,10 +129,12 @@ server {
     listen [::]:80 default_server;
     server_name _;
     
+    # Allow ACME challenge for SSL certification
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
     
+    # Redirect all other requests to HTTPS www
     location / {
         return 301 https://www.${MAIN_DOMAIN}\$request_uri;
     }
@@ -147,36 +149,58 @@ server {
     root ${WP_ROOT};
     index index.php index.html index.htm;
 
-    # Add these lines for proper cookie and redirect handling
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
+
+    # PHP FastCGI settings
     fastcgi_buffers 8 16k;
     fastcgi_buffer_size 32k;
     fastcgi_connect_timeout 300;
     fastcgi_send_timeout 300;
     fastcgi_read_timeout 300;
 
+    # SSL certification
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
 
+    # WordPress permalinks and main location
     location / {
-        try_files $uri $uri/ /index.php?$args;
-        # Add these lines for better redirect handling
-        proxy_cookie_path / "/; secure; HttpOnly; SameSite=Strict";
-        proxy_cookie_domain $host $host;
+        try_files \$uri \$uri/ /index.php?\$args;
+        
+        # Security measures
+        location ~ /\. {
+            deny all;
+        }
+        
+        # Deny access to specific files
+        location ~* /(?:uploads|files)/.*\.php\$ {
+            deny all;
+        }
     }
 
-    location ~ \.php$ {
+    # Handle PHP files
+    location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
-        # Add these lines for proper headers
         fastcgi_param HTTPS on;
         fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        
+        # Security measures
+        fastcgi_intercept_errors on;
+        fastcgi_hide_header X-Powered-By;
     }
 
-    location ~ /\.ht {
+    # Deny access to sensitive files
+    location ~ /\.(ht|git|env|config) {
         deny all;
     }
 
+    # Handle common files
     location = /favicon.ico {
         log_not_found off;
         access_log off;
@@ -188,10 +212,27 @@ server {
         access_log off;
     }
 
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+    # Cache static files
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
         expires max;
         log_not_found off;
+        access_log off;
         add_header Cache-Control "public, no-transform";
+        
+        # CORS headers
+        add_header Access-Control-Allow-Origin "*";
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+        add_header Access-Control-Allow-Headers "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type";
+    }
+
+    # Deny access to uploads that aren't images, videos, music etc.
+    location ~* ^/wp-content/uploads/.*.(html|htm|shtml|php|js|swf)\$ {
+        deny all;
+    }
+
+    # Deny public access to wp-config.php
+    location ~* wp-config.php {
+        deny all;
     }
 }
 EOF
