@@ -28,7 +28,7 @@ sudo cp "$PHP_FPM_CONF" "${PHP_FPM_CONF}.backup"
 # Update PHP-FPM configuration
 sudo sed -i 's/^user = .*/user = www-data/' "$PHP_FPM_CONF"
 sudo sed -i 's/^group = .*/group = www-data/' "$PHP_FPM_CONF"
-sudo sed -i 's/^listen = .*/listen = \/run\/php\/php-fpm.sock/' "$PHP_FPM_CONF"
+sudo sed -i 's/^listen = .*/listen = \/run\/php\/php8.3-fpm.sock/' "$PHP_FPM_CONF"
 sudo sed -i 's/^;listen.owner = .*/listen.owner = www-data/' "$PHP_FPM_CONF"
 sudo sed -i 's/^;listen.group = .*/listen.group = www-data/' "$PHP_FPM_CONF"
 sudo sed -i 's/^;listen.mode = .*/listen.mode = 0660/' "$PHP_FPM_CONF"
@@ -84,15 +84,27 @@ server {
     location ~ \.php$ {
         try_files \$uri =404;
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_index index.php;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         fastcgi_param PATH_INFO \$fastcgi_path_info;
+        
+        # WordPress 重定向修復
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        fastcgi_param HTTP_X_FORWARDED_HOST \$http_host;
+        
+        # 增加緩衝和超時
         fastcgi_buffer_size 128k;
         fastcgi_buffers 4 256k;
         fastcgi_busy_buffers_size 256k;
         fastcgi_read_timeout 600;
+    }
+
+    # WordPress admin 重定向修復
+    location /wp-admin {
+        try_files \$uri \$uri/ /index.php?\$args;
     }
 
     # Cache static files
@@ -144,6 +156,27 @@ cat > "${WP_ROOT}/php-test.php" << EOF
 phpinfo();
 EOF
 sudo chown www-data:www-data "${WP_ROOT}/php-test.php"
+
+# Add WordPress configuration
+echo "Adding WordPress configuration..."
+WP_CONFIG="${WP_ROOT}/wp-config.php"
+
+if [ -f "$WP_CONFIG" ]; then
+    # Add SSL and site URL settings if not exists
+    if ! grep -q "WP_HOME" "$WP_CONFIG"; then
+        cat >> "$WP_CONFIG" << EOF
+
+/* Fix for SSL and redirects */
+define('FORCE_SSL_ADMIN', true);
+define('WP_HOME', 'https://${DOMAIN}');
+define('WP_SITEURL', 'https://${DOMAIN}');
+
+if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    \$_SERVER['HTTPS'] = 'on';
+}
+EOF
+    fi
+fi
 
 echo "=== Fix complete ==="
 echo "Please test PHP at: https://${DOMAIN}/php-test.php"
