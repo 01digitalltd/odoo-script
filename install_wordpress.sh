@@ -147,17 +147,30 @@ server {
     root ${WP_ROOT};
     index index.php index.html index.htm;
 
+    # Add these lines for proper cookie and redirect handling
+    fastcgi_buffers 8 16k;
+    fastcgi_buffer_size 32k;
+    fastcgi_connect_timeout 300;
+    fastcgi_send_timeout 300;
+    fastcgi_read_timeout 300;
+
     location /.well-known/acme-challenge {
         root /var/www/html;
     }
 
     location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+        try_files $uri $uri/ /index.php?$args;
+        # Add these lines for better redirect handling
+        proxy_cookie_path / "/; secure; HttpOnly; SameSite=Strict";
+        proxy_cookie_domain $host $host;
     }
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        # Add these lines for proper headers
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
     }
 
     location ~ /\.ht {
