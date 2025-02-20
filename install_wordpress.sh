@@ -9,7 +9,6 @@ fi
 
 DOMAIN=$1
 MAIN_DOMAIN=$DOMAIN
-WWW_DOMAIN="www.${DOMAIN}"
 WP_ROOT="/var/www/${DOMAIN}"
 DB_NAME=$(echo ${DOMAIN} | sed 's/[.-]//g')
 DB_USER="${DB_NAME}_user"
@@ -109,8 +108,8 @@ define('COOKIEPATH', '/');
 define('SITECOOKIEPATH', '/');
 
 /* Custom WP_HOME and WP_SITEURL */
-define('WP_HOME', 'https://${WWW_DOMAIN}');
-define('WP_SITEURL', 'https://${WWW_DOMAIN}');
+define('WP_HOME', 'https://${MAIN_DOMAIN}');
+define('WP_SITEURL', 'https://${MAIN_DOMAIN}');
 
 /* Prevent file editing from WordPress admin */
 define('DISALLOW_FILE_EDIT', true);
@@ -216,7 +215,7 @@ sudo cat > /etc/nginx/sites-available/${NGINX_CONF} <<EOF
 server {
     listen 80;
     listen [::]:80;
-    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
+    server_name ${MAIN_DOMAIN};
 
     # Allow ACME challenge for SSL certification
     location /.well-known/acme-challenge {
@@ -233,7 +232,7 @@ server {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name ${MAIN_DOMAIN} ${WWW_DOMAIN};
+    server_name ${MAIN_DOMAIN};
 
     # SSL configuration
     ssl_certificate /etc/letsencrypt/live/${MAIN_DOMAIN}/fullchain.pem;
