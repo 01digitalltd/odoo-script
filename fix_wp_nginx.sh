@@ -53,26 +53,18 @@ server {
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
 
-    # HSTS (uncomment if you're sure)
-    # add_header Strict-Transport-Security "max-age=63072000" always;
-
     # Basic configuration
     client_max_body_size 500M;
 
+    # WordPress permalinks
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
     }
 
+    # PHP handling with PHP-FPM
     location ~ \.php$ {
-        try_files \$uri =404;
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        fastcgi_param PATH_INFO \$fastcgi_path_info;
-        fastcgi_param HTTPS on;
-        fastcgi_param HTTP_X_FORWARDED_PROTO https;
     }
 
     # Cache static files
