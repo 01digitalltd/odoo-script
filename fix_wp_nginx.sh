@@ -35,7 +35,7 @@ sudo sed -i 's/^;listen.mode = .*/listen.mode = 0660/' "$PHP_FPM_CONF"
 
 # 2. Create Nginx configuration
 echo "Creating Nginx configuration..."
-cat > "$NGINX_CONF" << 'EOF'
+cat > "$NGINX_CONF" << EOF
 # Main HTTPS server
 server {
     listen 443 ssl http2;
@@ -58,30 +58,70 @@ server {
     access_log /var/log/nginx/${DOMAIN}-access.log;
     error_log /var/log/nginx/${DOMAIN}-error.log;
 
+    # Global restrictions configuration
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+    }
+
+    # Deny all attempts to access hidden files
+    location ~ /\. {
+        deny all;
+    }
+
     # WordPress specific settings
     location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+        try_files $uri $uri/ /index.php?$args;
+        # Fix redirect issues
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
     }
 
     # Handle PHP
     location ~ \.php$ {
-        try_files \$uri =404;
+        try_files $uri =404;
         include fastcgi_params;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        
+        # Fix WordPress admin redirects
         fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        fastcgi_param HTTP_X_FORWARDED_HOST $http_host;
+        
+        # Increase timeouts
+        fastcgi_read_timeout 300;
+        fastcgi_send_timeout 300;
+        
+        # Buffers
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+    }
+
+    # Fix wp-admin redirects
+    location /wp-admin {
+        try_files $uri $uri/ /index.php?$args;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $http_host;
     }
 
     # Cache static files
     location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
         expires max;
         log_not_found off;
-    }
-
-    # Deny access to hidden files
-    location ~ /\. {
-        deny all;
     }
 }
 
@@ -100,10 +140,6 @@ server {
     }
 }
 EOF
-
-# Replace domain and path
-sed -i "s/\${DOMAIN}/$DOMAIN/g" "$NGINX_CONF"
-sed -i "s/\${WP_ROOT}/${WP_ROOT//\//\\/}/g" "$NGINX_CONF"
 
 # 3. Fix permissions
 echo "Setting correct permissions..."
