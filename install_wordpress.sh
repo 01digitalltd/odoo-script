@@ -257,19 +257,11 @@ server {
 
     # Root directory and index files
     root ${WP_ROOT};
-    index index.php index.html index.htm;
+    index index.php index.html index.htm index.nginx-debian.html;
 
     # Logs
     error_log /var/log/nginx/${DOMAIN}.error;
     access_log /var/log/nginx/${DOMAIN}.access;
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # WordPress permalinks and main location
     location / {
