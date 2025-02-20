@@ -155,7 +155,7 @@ sudo bash install_odoo_ubuntu.sh
 
 # SSL setup function
 setup_ssl() {
-    echo "=== Installing and Configuring SSL ==="
+    echo "=== Installing and Configuring SSL for Odoo ==="
     
     # Install certbot if not present
     if ! command -v certbot &> /dev/null; then
@@ -168,14 +168,13 @@ setup_ssl() {
 
     # Configure SSL certificates
     if [ "$DNS_OK" = true ]; then
-        echo "Configuring SSL certificates..."
+        echo "Configuring SSL certificates for Odoo..."
         
         # 停止 Nginx 服務
         sudo systemctl stop nginx
 
-        # 獲取證書
+        # 只為 Odoo 獲取證書
         sudo certbot certonly --nginx \
-            -d ${MAIN_DOMAIN} \
             -d erp.${MAIN_DOMAIN} \
             --non-interactive \
             --agree-tos \
@@ -195,13 +194,7 @@ setup_ssl() {
         sudo find /etc/letsencrypt/live -name "privkey*.pem" -exec chmod 640 {} \;
         sudo find /etc/letsencrypt/live -name "privkey*.pem" -exec chown root:www-data {} \;
 
-        # 配置 Nginx
-        sudo certbot --nginx \
-            -d ${MAIN_DOMAIN} \
-            --non-interactive \
-            --agree-tos \
-            --redirect
-
+        # 只配置 Odoo 的 SSL
         sudo certbot --nginx \
             -d erp.${MAIN_DOMAIN} \
             --non-interactive \
@@ -225,7 +218,7 @@ setup_ssl() {
     else
         echo "DNS not propagated, skipping SSL setup"
         echo "Run the following when DNS is ready:"
-        echo "sudo certbot --nginx -d ${MAIN_DOMAIN} -d erp.${MAIN_DOMAIN}"
+        echo "sudo certbot --nginx -d erp.${MAIN_DOMAIN}"
     fi
 }
 
@@ -260,7 +253,7 @@ sudo rm /tmp/wp_env.sh
 echo "============================================"
 echo "安裝完成！"
 echo "Odoo 訪問地址: https://erp.${MAIN_DOMAIN}"
-echo "WordPress 訪問地址: https://www.${MAIN_DOMAIN}"
+echo "WordPress 訪問地址: http://${MAIN_DOMAIN}"
 echo "所有登錄信息已保存到：${LOG_FILE}"
 echo "============================================"
 
