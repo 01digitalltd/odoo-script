@@ -75,12 +75,21 @@ server {
         deny all;
     }
 
-    # WordPress single site rules
+    # WordPress permalink structure
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
+        
+        # WordPress multisite subdirectory rules
+        rewrite ^/[_0-9a-zA-Z-]+(/wp-.*) \$1 last;
+        rewrite ^/[_0-9a-zA-Z-]+(/.*\.php)\$ \$1 last;
     }
 
-    # Pass PHP scripts to PHP-FPM
+    # Deny access to sensitive files
+    location ~* /(?:\.(?!well-known)|files|wp-config\.php|readme\.html|license\.txt) {
+        deny all;
+    }
+
+    # Handle PHP
     location ~ \.php$ {
         try_files \$uri =404;
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
@@ -90,28 +99,67 @@ server {
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         fastcgi_param PATH_INFO \$fastcgi_path_info;
         
-        # WordPress 重定向修復
+        # WordPress specific fastcgi configs
         fastcgi_param HTTPS on;
         fastcgi_param HTTP_X_FORWARDED_PROTO https;
         fastcgi_param HTTP_X_FORWARDED_HOST \$http_host;
         
-        # 增加緩衝和超時
+        # Performance settings
         fastcgi_buffer_size 128k;
         fastcgi_buffers 4 256k;
         fastcgi_busy_buffers_size 256k;
         fastcgi_read_timeout 600;
     }
 
-    # WordPress admin 重定向修復
+    # WordPress specific locations
     location /wp-admin {
         try_files \$uri \$uri/ /index.php?\$args;
+        # Increase timeout for admin area
+        fastcgi_read_timeout 600;
+    }
+
+    # Uploads location
+    location /wp-content/uploads {
+        location ~ \.php$ {
+            deny all;
+        }
     }
 
     # Cache static files
-    location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
         expires max;
         log_not_found off;
+        add_header Cache-Control "public, no-transform";
     }
+
+    # XML/RSS feeds
+    location = /feed {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ~* \.(?:xml|xsl)$ {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    # Handle sitemap
+    location = /sitemap.xml {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+    location = /sitemap_index.xml {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+}
+
+# Redirect non-www to www
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN};
+    
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    
+    return 301 https://www.\$host\$request_uri;
 }
 
 # Redirect HTTP to HTTPS
@@ -125,7 +173,7 @@ server {
     }
 
     location / {
-        return 301 https://\$host\$request_uri;
+        return 301 https://www.\$host\$request_uri;
     }
 }
 EOF
