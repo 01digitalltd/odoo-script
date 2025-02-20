@@ -241,36 +241,50 @@ echo "Adding WordPress configuration..."
 WP_CONFIG="${WP_ROOT}/wp-config.php"
 
 if [ -f "$WP_CONFIG" ]; then
-    # Add SSL and site URL settings if not exists
-    if ! grep -q "WP_HOME" "$WP_CONFIG"; then
-        cat >> "$WP_CONFIG" << EOF
+    # Remove any existing SSL and cookie settings
+    sudo sed -i '/FORCE_SSL_ADMIN/d' "$WP_CONFIG"
+    sudo sed -i '/COOKIE_DOMAIN/d' "$WP_CONFIG"
+    sudo sed -i '/COOKIEPATH/d' "$WP_CONFIG"
+    sudo sed -i '/SITECOOKIEPATH/d' "$WP_CONFIG"
+    sudo sed -i '/ADMIN_COOKIE_PATH/d' "$WP_CONFIG"
+    sudo sed -i '/WP_DEBUG/d' "$WP_CONFIG"
+    
+    # Add new settings
+    cat >> "$WP_CONFIG" << EOF
 
-/* Fix for SSL and redirects */
-define('FORCE_SSL_ADMIN', true);
-define('WP_HOME', 'https://www.${DOMAIN}');
-define('WP_SITEURL', 'https://www.${DOMAIN}');
-
-/* Fix for reverse proxy and HTTPS */
-if (strpos(\$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
-    \$_SERVER['HTTPS'] = 'on';
+/* SSL and cookie configuration */
+if (!defined('FORCE_SSL_ADMIN')) {
     define('FORCE_SSL_ADMIN', true);
 }
 
-if (isset(\$_SERVER['HTTP_X_FORWARDED_HOST'])) {
-    \$_SERVER['HTTP_HOST'] = \$_SERVER['HTTP_X_FORWARDED_HOST'];
+if (!defined('COOKIE_DOMAIN')) {
+    define('COOKIE_DOMAIN', 'www.${DOMAIN}');
 }
 
-/* Fix for login redirect */
-define('ADMIN_COOKIE_PATH', '/');
-define('COOKIEPATH', '/');
-define('SITECOOKIEPATH', '/');
-define('COOKIE_DOMAIN', '${DOMAIN}');
+if (!defined('COOKIEPATH')) {
+    define('COOKIEPATH', '/');
+}
 
-/* Fix for admin URLs */
-define('WP_ADMIN_DIR', 'wp-admin');
-define('ADMIN_COOKIE_PATH', SITECOOKIEPATH . WP_ADMIN_DIR);
+if (!defined('SITECOOKIEPATH')) {
+    define('SITECOOKIEPATH', '/');
+}
+
+if (!defined('ADMIN_COOKIE_PATH')) {
+    define('ADMIN_COOKIE_PATH', '/wp-admin');
+}
+
+/* Debug settings */
+if (!defined('WP_DEBUG')) {
+    define('WP_DEBUG', true);
+    define('WP_DEBUG_LOG', true);
+    define('WP_DEBUG_DISPLAY', false);
+}
+
+/* Fix for HTTPS detection */
+if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    \$_SERVER['HTTPS'] = 'on';
+}
 EOF
-    fi
 fi
 
 # Update WordPress URLs in database
